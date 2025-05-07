@@ -27,6 +27,7 @@ import { toast } from "@/components/ui/use-toast"
 import ProjectFundStatus from "@/components/project-fund-status"
 import RecentDonations from "@/components/recent-donations"
 import { AppHeader } from "@/components/app-header"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 // Sample data for Monthly Cash Flow
 const monthlyData = [
@@ -129,6 +130,7 @@ interface Project {
   fundAccounts: any[]
   milestones: Milestone[]
   milestoneBudgets: MilestoneBudget[]
+  fundReleaseRequests?: FundReleaseRequest[]
 }
 
 interface Milestone {
@@ -146,6 +148,24 @@ interface MilestoneBudget {
   budget: number
   dueDate?: string
   status?: string
+}
+
+interface FundReleaseRequest {
+  id: string
+  projectId: string
+  milestoneId: string
+  amount: number
+  description: string
+  status: "Pending" | "Approved" | "Rejected"
+  requestedBy: string
+  requestedByName: string
+  requestDate: string
+  approvedBy?: string
+  approvedByName?: string
+  approvalDate?: string
+  rejectionReason?: string
+  projectName?: string
+  milestoneName?: string
 }
 
 // Define a type for tracking loading states of specific actions
@@ -179,6 +199,9 @@ export default function FundCustodianDashboard() {
   // Add this after other state declarations
   const [projectsWithMilestones, setProjectsWithMilestones] = useState<Project[]>([])
   const [allMilestoneBudgets, setAllMilestoneBudgets] = useState<MilestoneBudget[]>([])
+  const [fundReleaseRequests, setFundReleaseRequests] = useState<FundReleaseRequest[]>([])
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
+  const [filteredFundReleaseRequests, setFilteredFundReleaseRequests] = useState<FundReleaseRequest[]>([])
 
   // Track loading state for specific buttons
   const [actionLoading, setActionLoading] = useState<ActionLoadingState | null>(null)
@@ -312,6 +335,7 @@ export default function FundCustodianDashboard() {
         const fundRequestsData: FundRequest[] = []
         const projectsWithMilestonesData: Project[] = []
         const allMilestoneBudgetsData: MilestoneBudget[] = []
+        const allFundReleaseRequests: FundReleaseRequest[] = []
 
         projectsSnapshot.forEach((doc) => {
           const projectData = doc.data() as Project
@@ -334,6 +358,31 @@ export default function FundCustodianDashboard() {
                 })
               })
             }
+          }
+
+          // Collect all fund release requests
+          if (projectData.fundReleaseRequests && Array.isArray(projectData.fundReleaseRequests)) {
+            projectData.fundReleaseRequests.forEach((request) => {
+              // Find the milestone name for this request
+              let milestoneName = "Unknown Milestone"
+              if (projectData.milestones) {
+                const milestone = projectData.milestones.find((m) => m.id === request.milestoneId)
+                if (milestone) {
+                  milestoneName = milestone.name
+                }
+              } else if (projectData.milestoneBudgets) {
+                const milestoneBudget = projectData.milestoneBudgets.find((b) => b.milestoneId === request.milestoneId)
+                if (milestoneBudget && milestoneBudget.milestoneName) {
+                  milestoneName = milestoneBudget.milestoneName
+                }
+              }
+
+              allFundReleaseRequests.push({
+                ...request,
+                projectName: projectData.name,
+                milestoneName: milestoneName,
+              })
+            })
           }
 
           // Count pending fund account requests
@@ -370,6 +419,16 @@ export default function FundCustodianDashboard() {
         setFundRequests(fundRequestsData)
         setProjectsWithMilestones(projectsWithMilestonesData)
         setAllMilestoneBudgets(allMilestoneBudgetsData)
+        setFundReleaseRequests(allFundReleaseRequests)
+
+        // Set the first project as selected if there are any projects
+        if (projectsWithMilestonesData.length > 0) {
+          setSelectedProjectId(projectsWithMilestonesData[0].id)
+          // Filter fund release requests for the selected project
+          setFilteredFundReleaseRequests(
+            allFundReleaseRequests.filter((request) => request.projectId === projectsWithMilestonesData[0].id),
+          )
+        }
       } catch (error) {
         console.error("Error fetching dashboard data:", error)
         toast({
@@ -384,6 +443,15 @@ export default function FundCustodianDashboard() {
 
     fetchDashboardData()
   }, [])
+
+  // Update filtered fund release requests when selected project changes
+  useEffect(() => {
+    if (selectedProjectId) {
+      setFilteredFundReleaseRequests(fundReleaseRequests.filter((request) => request.projectId === selectedProjectId))
+    } else {
+      setFilteredFundReleaseRequests(fundReleaseRequests)
+    }
+  }, [selectedProjectId, fundReleaseRequests])
 
   // Format currency
   const formatCurrency = (amount: number) => {
@@ -400,7 +468,7 @@ export default function FundCustodianDashboard() {
     try {
       // Check if timestamp is a Firestore timestamp or a string
       if (typeof timestamp === "string") {
-        return timestamp
+        return new Date(timestamp).toLocaleDateString()
       }
       const date = typeof timestamp.toDate === "function" ? timestamp.toDate() : new Date(timestamp)
 
@@ -561,6 +629,84 @@ export default function FundCustodianDashboard() {
 
       // Update the pending bank requests count in the UI
       setPendingBankRequests((prev) => Math.max(0, prev - 1))
+    }
+  }
+
+  // Function to handle fund release request approval or rejection
+  const handleFundReleaseRequestUpdate = async (
+    requestId: string,
+    projectId: string,
+    newStatus: "Approved" | "Rejected",
+    action: "approve" | "refuse",
+  ) => {
+    try {
+      // Set the loading state for this specific action
+      setActionLoading({ requestId, action })
+
+      // Get the project document
+      const projectRef = doc(db, "projects", projectId)
+      const projectSnap = await getDoc(projectRef)
+
+      if (!projectSnap.exists()) {
+        throw new Error("Project not found")
+      }
+
+      const projectData = projectSnap.data()
+
+      // Update the fund release request status
+      if (projectData.fundReleaseRequests && Array.isArray(projectData.fundReleaseRequests)) {
+        const updatedFundReleaseRequests = projectData.fundReleaseRequests.map((request: any) => {
+          if (request.id === requestId) {
+            return {
+              ...request,
+              status: newStatus,
+              approvedBy: userProfile?.uid || "",
+              approvedByName: userProfile?.displayName || "Fund Custodian",
+              approvalDate: new Date().toISOString(),
+              rejectionReason: newStatus === "Rejected" ? "Request rejected by fund custodian" : undefined,
+            }
+          }
+          return request
+        })
+
+        // Update the project document
+        await updateDoc(projectRef, {
+          fundReleaseRequests: updatedFundReleaseRequests,
+        })
+
+        // Update local state
+        setFundReleaseRequests((prev) =>
+          prev.map((request) => {
+            if (request.id === requestId) {
+              return {
+                ...request,
+                status: newStatus,
+                approvedBy: userProfile?.uid || "",
+                approvedByName: userProfile?.displayName || "Fund Custodian",
+                approvalDate: new Date().toISOString(),
+                rejectionReason: newStatus === "Rejected" ? "Request rejected by fund custodian" : undefined,
+              }
+            }
+            return request
+          }),
+        )
+
+        toast({
+          title: "Success",
+          description: `Fund release request ${newStatus.toLowerCase()} successfully.`,
+          variant: "default",
+        })
+      }
+    } catch (error) {
+      console.error("Error updating fund release request:", error)
+      toast({
+        title: "Error",
+        description: "Failed to update fund release request. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      // Clear the loading state
+      setActionLoading(null)
     }
   }
 
@@ -1051,6 +1197,28 @@ export default function FundCustodianDashboard() {
                       <TabsContent value="release" className="space-y-6 mt-6">
                         <h3 className="text-lg font-bold">Pending Fund Release Requests</h3>
 
+                        <div className="mb-4">
+                          <label htmlFor="project-filter" className="block text-sm font-medium mb-2">
+                            Filter by Project:
+                          </label>
+                          <Select
+                            value={selectedProjectId || ""}
+                            onValueChange={(value) => setSelectedProjectId(value || null)}
+                          >
+                            <SelectTrigger className="w-full md:w-[300px]">
+                              <SelectValue placeholder="Select a project" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">All Projects</SelectItem>
+                              {projectsWithMilestones.map((project) => (
+                                <SelectItem key={project.id} value={project.id}>
+                                  {project.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
                         <Card className="shadow-sm">
                           <CardContent className="p-6">
                             <div className="overflow-x-auto">
@@ -1062,22 +1230,113 @@ export default function FundCustodianDashboard() {
                                     <th className="text-left py-3 font-medium">Requested By</th>
                                     <th className="text-left py-3 font-medium">Request Date</th>
                                     <th className="text-left py-3 font-medium">Amount</th>
+                                    <th className="text-left py-3 font-medium">Status</th>
                                     <th className="text-left py-3 font-medium">Action</th>
                                   </tr>
                                 </thead>
                                 <tbody>
-                                  <tr>
-                                    <td className="py-4">Sustainable Energy Project</td>
-                                    <td className="py-4">Installation Phase 1</td>
-                                    <td className="py-4">Alex Johnson</td>
-                                    <td className="py-4">Jun 20, 2023, 12:30 PM</td>
-                                    <td className="py-4">$25,000</td>
-                                    <td className="py-4">
-                                      <Button variant="outline" size="sm">
-                                        Review
-                                      </Button>
-                                    </td>
-                                  </tr>
+                                  {isLoading ? (
+                                    <tr>
+                                      <td colSpan={7} className="py-8 text-center">
+                                        <Loader2 className="h-6 w-6 animate-spin mx-auto" />
+                                      </td>
+                                    </tr>
+                                  ) : filteredFundReleaseRequests.length > 0 ? (
+                                    filteredFundReleaseRequests.map((request) => (
+                                      <tr key={request.id} className="border-b">
+                                        <td className="py-4">{request.projectName}</td>
+                                        <td className="py-4">{request.milestoneName}</td>
+                                        <td className="py-4">{request.requestedByName}</td>
+                                        <td className="py-4">{formatDate(request.requestDate)}</td>
+                                        <td className="py-4">{formatCurrency(request.amount)}</td>
+                                        <td className="py-4">
+                                          <span
+                                            className={`px-2 py-1 rounded-full text-xs ${
+                                              request.status === "Approved"
+                                                ? "bg-green-100 text-green-800"
+                                                : request.status === "Rejected"
+                                                  ? "bg-red-100 text-red-800"
+                                                  : "bg-yellow-100 text-yellow-800"
+                                            }`}
+                                          >
+                                            {request.status}
+                                          </span>
+                                        </td>
+                                        <td className="py-4">
+                                          {request.status === "Pending" ? (
+                                            <div className="flex gap-2">
+                                              <Button
+                                                variant="outline"
+                                                size="sm"
+                                                className="bg-green-100 hover:bg-green-200 text-green-800 border-green-300"
+                                                onClick={() =>
+                                                  handleFundReleaseRequestUpdate(
+                                                    request.id,
+                                                    request.projectId,
+                                                    "Approved",
+                                                    "approve",
+                                                  )
+                                                }
+                                                disabled={
+                                                  actionLoading?.requestId === request.id &&
+                                                  actionLoading?.action === "approve"
+                                                }
+                                              >
+                                                {actionLoading?.requestId === request.id &&
+                                                actionLoading?.action === "approve" ? (
+                                                  <span className="flex items-center">
+                                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                                    Processing...
+                                                  </span>
+                                                ) : (
+                                                  "Approve"
+                                                )}
+                                              </Button>
+                                              <Button
+                                                variant="outline"
+                                                size="sm"
+                                                className="bg-red-100 hover:bg-red-200 text-red-800 border-red-300"
+                                                onClick={() =>
+                                                  handleFundReleaseRequestUpdate(
+                                                    request.id,
+                                                    request.projectId,
+                                                    "Rejected",
+                                                    "refuse",
+                                                  )
+                                                }
+                                                disabled={
+                                                  actionLoading?.requestId === request.id &&
+                                                  actionLoading?.action === "refuse"
+                                                }
+                                              >
+                                                {actionLoading?.requestId === request.id &&
+                                                actionLoading?.action === "refuse" ? (
+                                                  <span className="flex items-center">
+                                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                                    Processing...
+                                                  </span>
+                                                ) : (
+                                                  "Reject"
+                                                )}
+                                              </Button>
+                                            </div>
+                                          ) : (
+                                            <span className="text-sm text-muted-foreground">
+                                              {request.status === "Approved"
+                                                ? `Approved on ${formatDate(request.approvalDate)}`
+                                                : `Rejected on ${formatDate(request.approvalDate)}`}
+                                            </span>
+                                          )}
+                                        </td>
+                                      </tr>
+                                    ))
+                                  ) : (
+                                    <tr>
+                                      <td colSpan={7} className="py-8 text-center text-muted-foreground">
+                                        No fund release requests found
+                                      </td>
+                                    </tr>
+                                  )}
                                 </tbody>
                               </table>
                             </div>

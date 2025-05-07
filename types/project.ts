@@ -217,8 +217,10 @@ export interface SocialMediaAccount {
 export interface MilestoneBudget {
   id: string
   milestoneId: string
-  budgetItem: string
-  cost: number
+  milestoneName: string
+  dueDate: string
+  budget: number
+  status: "Planned" | "In-progress" | "Completed"
 }
 
 export interface FundReleaseRequest {

@@ -379,6 +379,9 @@ export function ProjectManagerDashboard() {
     )
   }
 
+  // Calculate total milestone budget
+  const totalMilestoneBudget = milestoneBudgets.reduce((total, budget) => total + budget.budget, 0)
+
   return (
     <div className="flex flex-col">
       <div className="flex-1 space-y-4 p-6">
@@ -632,13 +635,13 @@ export function ProjectManagerDashboard() {
                     milestoneBudgets.map((budget) => {
                       const hasRequest = hasFundReleaseRequest(budget.milestoneId)
                       const requestStatus = getFundReleaseRequestStatus(budget.milestoneId)
-                      const percentOfTotal = totalCost > 0 ? (budget.amount / totalCost) * 100 : 0
+                      const percentOfTotal = totalCost > 0 ? (budget.budget / totalCost) * 100 : 0
 
                       return (
                         <tr key={budget.id} className="border-b border-muted">
                           <td className="py-4 px-4">{budget.milestoneName}</td>
                           <td className="py-4 px-4">{new Date(budget.dueDate).toLocaleDateString()}</td>
-                          <td className="py-4 px-4">{formatCurrency(budget.amount)}</td>
+                          <td className="py-4 px-4">{formatCurrency(budget.budget)}</td>
                           <td className="py-4 px-4">{percentOfTotal.toFixed(0)}%</td>
                           <td className="py-4 px-4">
                             <span
@@ -696,15 +699,19 @@ export function ProjectManagerDashboard() {
                     </tr>
                   )}
                   {milestoneBudgets.length > 0 && (
-                    <tr className="bg-muted/20">
-                      <td className="py-4 px-4 font-medium">Total</td>
-                      <td className="py-4 px-4"></td>
-                      <td className="py-4 px-4 font-medium">{formatCurrency(totalBudget)}</td>
-                      <td className="py-4 px-4 font-medium">{totalPercentage}%</td>
-                      <td className="py-4 px-4"></td>
-                      <td className="py-4 px-4"></td>
-                    </tr>
-                  )}
+                      <tr className="bg-gray-50 dark:bg-gray-800 font-medium">
+                        <td className="py-4 px-4 border-b border-gray-200 dark:border-gray-700">Total</td>
+                        <td className="py-4 px-4 border-b border-gray-200 dark:border-gray-700"></td>
+                        <td className="py-4 px-4 border-b border-gray-200 dark:border-gray-700">
+                          {formatCurrency(totalMilestoneBudget)}
+                        </td>
+                        <td className="py-4 px-4 border-b border-gray-200 dark:border-gray-700">
+                          {totalCost > 0 ? ((totalMilestoneBudget / totalCost) * 100).toFixed(0) : 0}%
+                        </td>
+                        <td className="py-4 px-4 border-b border-gray-200 dark:border-gray-700"></td>
+                        <td className="py-4 px-4 border-b border-gray-200 dark:border-gray-700"></td>
+                      </tr>
+                    )}
                 </tbody>
               </table>
             </div>
@@ -739,7 +746,7 @@ export function ProjectManagerDashboard() {
               </Label>
               <Input
                 id="amount"
-                value={formatCurrency(selectedMilestoneBudget?.amount || 0)}
+                value={formatCurrency(selectedMilestoneBudget?.budget || 0)}
                 className="col-span-3"
                 disabled
               />
