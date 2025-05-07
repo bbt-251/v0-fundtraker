@@ -175,6 +175,7 @@ export default function SignupPage() {
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
                 >
                   <option value="Project Owner">Project Owner</option>
+                  <option value="Project Manager">Project Manager</option>
                   <option value="Fund Custodian">Fund Custodian</option>
                   <option value="Platform Governor">Platform Governor</option>
                   <option value="Donor">Donor</option>
@@ -182,6 +183,7 @@ export default function SignupPage() {
                 </select>
                 <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                   {role === "Project Owner" && "Create and manage funding projects"}
+                  {role === "Project Manager" && "Manage project timelines, resources, and activities"}
                   {role === "Fund Custodian" && "Manage and oversee fund disbursements"}
                   {role === "Platform Governor" && "Administer the platform and verify accounts"}
                   {role === "Donor" && "Donate to projects without expecting financial returns"}

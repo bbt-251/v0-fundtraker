@@ -1,64 +1,43 @@
 "use client"
 
-import type React from "react"
-
 import { useState, useEffect } from "react"
 import { useAuth } from "@/contexts/auth-context"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
-import { Bell, TrendingUp, AlertTriangle, HelpCircle } from "lucide-react"
-import { formatDate } from "@/lib/utils/date-utils"
-
-// Mock data for demonstration
-const mockData = {
-  tasks: { completed: 45, total: 78 },
-  queries: { total: 12, pending: 5 },
-  issues: { total: 7, lastWeek: 3 },
-  risks: { total: 5, highPriority: 2 },
-  timeline: [
-    { phase: "Design", completion: 75 },
-    { phase: "Development", completion: 40 },
-    { phase: "Testing", completion: 0 },
-    { phase: "Deployment", completion: 0 },
-  ],
-  resources: [
-    { department: "Development", budget: 65, actual: 70, overBudget: true },
-    { department: "Design", budget: 20, actual: 15, overBudget: false },
-    { department: "QA", budget: 10, actual: 8, overBudget: false },
-    { department: "Management", budget: 5, actual: 7, overBudget: true },
-  ],
-  activities: [
-    {
-      name: "Research and Analysis",
-      completion: 75,
-      dueDate: "2025-03-02",
-      teamMembers: 3,
-    },
-    {
-      name: "Create User Journey",
-      completion: 40,
-      dueDate: "2025-03-06",
-      teamMembers: 2,
-    },
-    {
-      name: "Define User Persona",
-      completion: 20,
-      dueDate: "2025-03-12",
-      teamMembers: 1,
-    },
-    {
-      name: "UI Prototyping",
-      completion: 0,
-      dueDate: "2025-03-18",
-      teamMembers: 0,
-      notStarted: true,
-    },
-  ],
-}
+import { BarChart, FileQuestion, AlertTriangle, Loader2 } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { toast } from "@/components/ui/use-toast"
+import { formatCurrency } from "@/lib/utils/currency-utils"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import { submitFundReleaseRequest, getFundReleaseRequests } from "@/services/project-service"
+import type { Project, ProjectMilestone, FundReleaseRequest } from "@/types/project"
+import { collection, query, where, getDocs } from "firebase/firestore"
+import { db } from "@/lib/firebase/firebase-client"
 
 export function ProjectManagerDashboard() {
   const { userProfile } = useAuth()
   const [greeting, setGreeting] = useState("Good day")
+  const [loading, setLoading] = useState(true)
+  const [projects, setProjects] = useState<Project[]>([])
+  const [selectedProject, setSelectedProject] = useState<Project | null>(null)
+  const [milestones, setMilestones] = useState<ProjectMilestone[]>([])
+  const [fundReleaseRequests, setFundReleaseRequests] = useState<FundReleaseRequest[]>([])
+  const [requestingFunds, setRequestingFunds] = useState<string | null>(null)
+  const [selectedMilestone, setSelectedMilestone] = useState<ProjectMilestone | null>(null)
+  const [releaseDescription, setReleaseDescription] = useState("")
+  const [dialogOpen, setDialogOpen] = useState(false)
+
+  const { user } = useAuth()
 
   useEffect(() => {
     const hour = new Date().getHours()
@@ -67,177 +46,585 @@ export function ProjectManagerDashboard() {
     else setGreeting("Good Evening")
   }, [])
 
+  useEffect(() => {
+    async function fetchUserProjects() {
+      if (!user?.uid) return
+
+      try {
+        setLoading(true)
+
+        // Fetch projects where the user is the project manager
+        const projectsRef = collection(db, "projects")
+        const q = query(projectsRef)
+        const querySnapshot = await getDocs(q)
+
+        const projectsData = querySnapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        })) as Project[]
+
+        setProjects(projectsData)
+
+        if (projectsData.length > 0) {
+          setSelectedProject(projectsData[0])
+          setMilestones(projectsData[0].milestones || [])
+
+          // Fetch fund release requests for this project
+          if (projectsData[0].id) {
+            const requests = await getFundReleaseRequests(projectsData[0].id)
+            setFundReleaseRequests(requests)
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching projects:", error)
+        toast({
+          title: "Error",
+          description: "Failed to load projects. Please try again.",
+          variant: "destructive",
+        })
+
+        // For demo purposes, create mock data if fetching fails
+        createMockData()
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    function createMockData() {
+      // Create mock project data for demonstration
+      const mockProject: Project = {
+        id: "demo-project-id",
+        name: "FundTracker Platform",
+        description: "A comprehensive platform for tracking and managing project funds",
+        ownerId: user?.uid || "user-123",
+        ownerName: userProfile?.displayName || "John Doe",
+        category: "Technology",
+        location: "Global",
+        budget: 210000,
+        timeline: "12 months",
+        objectives: ["Improve fund tracking", "Enhance transparency"],
+        beneficiaries: "Project managers and donors",
+        status: "approved",
+        announced: true,
+        createdAt: new Date(),
+        userId: user?.uid || "user-123",
+        projectManagerId: user?.uid || "user-123",
+        scope: "Full platform development",
+        documents: [],
+        humanResources: [],
+        materialResources: [],
+        fundAccounts: [],
+        activities: [],
+        tasks: [],
+        deliverables: [],
+        milestones: [
+          {
+            id: "milestone-1",
+            name: "Initial Research & Planning",
+            description: "Complete initial research and project planning phase",
+            date: "2025-05-05",
+            status: "Not Started",
+            createdAt: new Date().toISOString(),
+            budget: 40000,
+            percentOfTotal: 19,
+          },
+          {
+            id: "milestone-2",
+            name: "Design Phase",
+            description: "Complete UI/UX design and architecture",
+            date: "2025-06-15",
+            status: "Not Started",
+            createdAt: new Date().toISOString(),
+            budget: 4000,
+            percentOfTotal: 2,
+          },
+          {
+            id: "milestone-3",
+            name: "MVP Development",
+            description: "Develop minimum viable product",
+            date: "2025-08-30",
+            status: "Not Started",
+            createdAt: new Date().toISOString(),
+            budget: 5000,
+            percentOfTotal: 2,
+          },
+        ],
+        fundReleaseRequests: [],
+      }
+
+      setProjects([mockProject])
+      setSelectedProject(mockProject)
+      setMilestones(mockProject.milestones || [])
+      setFundReleaseRequests([])
+    }
+
+    fetchUserProjects()
+  }, [user?.uid, userProfile?.displayName])
+
+  // Calculate total budget and percentage
+  const totalBudget = milestones.reduce((sum, milestone) => sum + (milestone.budget || 0), 0)
+  const totalPercentage = milestones.reduce((sum, milestone) => sum + (milestone.percentOfTotal || 0), 0)
+
+  // Sample data for Gantt chart
+  const ganttData = [
+    { task: "Research", start: 0, duration: 20, complete: 100 },
+    { task: "Design", start: 15, duration: 25, complete: 75 },
+    { task: "Development", start: 35, duration: 35, complete: 40 },
+    { task: "Testing", start: 65, duration: 20, complete: 0 },
+    { task: "Deployment", start: 85, duration: 15, complete: 0 },
+  ]
+
+  // Sample data for resource utilization
+  const resourceData = [
+    { name: "Development", allocated: 65, actual: 70 },
+    { name: "Design", allocated: 20, actual: 15 },
+    { name: "QA", allocated: 10, actual: 8 },
+    { name: "Management", allocated: 5, actual: 7 },
+  ]
+
+  const handleFundReleaseRequest = async (milestone: ProjectMilestone) => {
+    setSelectedMilestone(milestone)
+    setReleaseDescription("")
+    setDialogOpen(true)
+  }
+
+  const submitRequest = async () => {
+    if (!selectedMilestone || !selectedProject || !user) return
+
+    try {
+      setRequestingFunds(selectedMilestone.id)
+      setDialogOpen(false)
+
+      // Submit the fund release request to Firebase
+      await submitFundReleaseRequest(
+        selectedProject.id,
+        selectedMilestone.id,
+        selectedMilestone.budget || 0,
+        releaseDescription,
+      )
+
+      // Refresh the fund release requests
+      const updatedRequests = await getFundReleaseRequests(selectedProject.id)
+      setFundReleaseRequests(updatedRequests)
+
+      toast({
+        title: "Fund release request submitted",
+        description: `Your request for ${formatCurrency(selectedMilestone.budget || 0)} has been sent to the Fund Custodian for approval.`,
+      })
+    } catch (error) {
+      console.error("Error submitting fund release request:", error)
+      toast({
+        title: "Error",
+        description: "Failed to submit fund release request. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setRequestingFunds(null)
+    }
+  }
+
+  // Check if a milestone already has a pending or approved fund release request
+  const hasFundReleaseRequest = (milestoneId: string) => {
+    return fundReleaseRequests.some(
+      (request) =>
+        request.milestoneId === milestoneId && (request.status === "Pending" || request.status === "Approved"),
+    )
+  }
+
+  // Get the status of a fund release request for a milestone
+  const getFundReleaseRequestStatus = (milestoneId: string) => {
+    const request = fundReleaseRequests.find((request) => request.milestoneId === milestoneId)
+    return request ? request.status : null
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <span className="ml-2">Loading dashboard...</span>
+      </div>
+    )
+  }
+
   return (
-    <div className="space-y-6 p-5">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">
-          {greeting}, {userProfile?.firstName || userProfile?.displayName || "Project Manager"}!
-        </h1>
-        <p className="text-muted-foreground">Track your work, activities, and projects in one place.</p>
-      </div>
+    <div className="flex flex-col">
+      <div className="flex-1 space-y-4 p-6">
+        {/* Header */}
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">
+            {greeting}, {userProfile?.firstName || userProfile?.displayName || "Project Manager"}!
+          </h1>
+          <p className="text-muted-foreground">Track your work, activities, and projects in one place.</p>
+        </div>
 
-      {/* Metrics Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <MetricCard
-          title="Tasks Completed"
-          value={`${mockData.tasks.completed}/${mockData.tasks.total}`}
-          description={`${Math.round((mockData.tasks.completed / mockData.tasks.total) * 100)}% completion rate`}
-          icon={<TrendingUp className="h-4 w-4 text-muted-foreground" />}
-        />
-        <MetricCard
-          title="Queries"
-          value={mockData.queries.total.toString()}
-          description={`${mockData.queries.pending} pending responses`}
-          icon={<HelpCircle className="h-4 w-4 text-muted-foreground" />}
-        />
-        <MetricCard
-          title="Open Issues"
-          value={mockData.issues.total.toString()}
-          description={`${mockData.issues.lastWeek} from last week`}
-          icon={<AlertTriangle className="h-4 w-4 text-muted-foreground" />}
-        />
-        <MetricCard
-          title="Active Risks"
-          value={mockData.risks.total.toString()}
-          description={`${mockData.risks.highPriority} high priority`}
-          icon={<Bell className="h-4 w-4 text-muted-foreground" />}
-        />
-      </div>
+        {/* Project Selector */}
+        <div className="w-full max-w-md">
+          <Label htmlFor="project-select">Select Project</Label>
+          <select
+            id="project-select"
+            className="w-full p-2 border rounded-md mt-1"
+            value={selectedProject?.id || ""}
+            onChange={(e) => {
+              const projectId = e.target.value
+              const project = projects.find((p) => p.id === projectId)
+              if (project) {
+                setSelectedProject(project)
+                setMilestones(project.milestones || [])
 
-      {/* Project Timeline and Resource Utilization */}
-      <div className="grid gap-4 md:grid-cols-2">
-        {/* Project Timeline */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Project Timeline</CardTitle>
-            <p className="text-sm text-muted-foreground">Gantt chart representation of project schedule</p>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="flex justify-between text-xs text-muted-foreground">
-                <span>0%</span>
-                <span>25%</span>
-                <span>50%</span>
-                <span>75%</span>
-                <span>100%</span>
+                // Fetch fund release requests for this project
+                if (project.id) {
+                  getFundReleaseRequests(project.id)
+                    .then((requests) => setFundReleaseRequests(requests))
+                    .catch((error) => {
+                      console.error("Error fetching fund release requests:", error)
+                      setFundReleaseRequests([])
+                    })
+                }
+              }
+            }}
+          >
+            <option value="" disabled>
+              Select a project
+            </option>
+            {projects.map((project) => (
+              <option key={project.id} value={project.id}>
+                {project.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Dashboard content */}
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Tasks Completed</CardTitle>
+              <BarChart className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">45/78</div>
+              <p className="text-xs text-muted-foreground">58% completion rate</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Queries</CardTitle>
+              <FileQuestion className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">12</div>
+              <p className="text-xs text-muted-foreground">5 pending responses</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Open Issues</CardTitle>
+              <BarChart className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">7</div>
+              <p className="text-xs text-muted-foreground">-3 from last week</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Active Risks</CardTitle>
+              <AlertTriangle className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">5</div>
+              <p className="text-xs text-muted-foreground">2 high priority</p>
+            </CardContent>
+          </Card>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
+          <Card className="col-span-4">
+            <CardHeader>
+              <CardTitle>Project Timeline</CardTitle>
+              <CardDescription>Gantt chart representation of project schedule</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="h-[250px] w-full">
+                {/* Simple Gantt chart visualization */}
+                <div className="flex items-center justify-between text-xs text-muted-foreground mb-2">
+                  <span>0%</span>
+                  <span>25%</span>
+                  <span>50%</span>
+                  <span>75%</span>
+                  <span>100%</span>
+                </div>
+                <div className="h-[220px] space-y-6">
+                  {ganttData.map((item, index) => (
+                    <div key={index} className="relative h-8">
+                      <div className="absolute left-0 top-0 flex items-center h-full">
+                        <span className="text-sm font-medium">{item.task}</span>
+                      </div>
+                      <div
+                        className="absolute h-6 bg-muted rounded-sm"
+                        style={{
+                          left: `${item.start}%`,
+                          width: `${item.duration}%`,
+                          top: "4px",
+                        }}
+                      >
+                        <div className="h-full bg-primary rounded-sm" style={{ width: `${item.complete}%` }} />
+                      </div>
+                      <div className="absolute right-0 top-0 flex items-center h-full">
+                        <span className="text-xs text-muted-foreground">{item.complete}%</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
-
-              {mockData.timeline.map((phase, index) => (
-                <div key={index} className="space-y-1">
-                  <div className="flex justify-between">
-                    <span className="text-sm font-medium">{phase.phase}</span>
-                    <span className="text-sm text-muted-foreground">{phase.completion}%</span>
+            </CardContent>
+          </Card>
+          <Card className="col-span-3">
+            <CardHeader>
+              <CardTitle>Resource Utilization</CardTitle>
+              <CardDescription>Total utilization over project cost</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="h-[250px]">
+                {/* Resource utilization chart */}
+                <div className="space-y-6">
+                  {resourceData.map((item, index) => (
+                    <div key={index} className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm font-medium">{item.name}</span>
+                        <span className="text-xs text-muted-foreground">
+                          Budget: {item.allocated}% | Actual: {item.actual}%
+                        </span>
+                      </div>
+                      <div className="relative h-4 w-full bg-muted rounded-full overflow-hidden">
+                        {/* Allocated budget bar */}
+                        <div
+                          className="absolute h-full bg-primary/30 rounded-full"
+                          style={{ width: `${item.allocated}%` }}
+                        />
+                        {/* Actual usage bar */}
+                        <div
+                          className={`absolute h-full rounded-full ${
+                            item.actual > item.allocated ? "bg-destructive" : "bg-primary"
+                          }`}
+                          style={{ width: `${item.actual}%` }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex justify-between items-center mt-6 text-xs text-muted-foreground">
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 bg-primary/30 rounded-full"></div>
+                    <span>Allocated Budget</span>
                   </div>
-                  <div className="h-2 w-full rounded-full bg-secondary">
-                    <div className="h-2 rounded-full bg-primary" style={{ width: `${phase.completion}%` }} />
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 bg-primary rounded-full"></div>
+                    <span>Actual Usage</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 bg-destructive rounded-full"></div>
+                    <span>Over Budget</span>
                   </div>
                 </div>
-              ))}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle>Activity Progress</CardTitle>
+            <CardDescription>Completion level of project activities</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-8">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium">Research and Analysis</p>
+                  <span className="text-sm font-medium">75%</span>
+                </div>
+                <Progress value={75} className="h-2" />
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>Due: Mar 2, 2025</span>
+                  <span>3 team members assigned</span>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium">Create User Journey</p>
+                  <span className="text-sm font-medium">40%</span>
+                </div>
+                <Progress value={40} className="h-2" />
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>Due: Mar 6, 2025</span>
+                  <span>2 team members assigned</span>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium">Define User Persona</p>
+                  <span className="text-sm font-medium">20%</span>
+                </div>
+                <Progress value={20} className="h-2" />
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>Due: Mar 12, 2025</span>
+                  <span>1 team member assigned</span>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium">UI Prototyping</p>
+                  <span className="text-sm font-medium">0%</span>
+                </div>
+                <Progress value={0} className="h-2" />
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>Due: Mar 18, 2025</span>
+                  <span>Not started</span>
+                </div>
+              </div>
             </div>
           </CardContent>
         </Card>
-
-        {/* Resource Utilization */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Resource Utilization</CardTitle>
-            <p className="text-sm text-muted-foreground">Total utilization over project cost</p>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {mockData.resources.map((resource, index) => (
-                <div key={index} className="space-y-1">
-                  <div className="flex justify-between">
-                    <span className="text-sm font-medium">{resource.department}</span>
-                    <span className="text-xs text-muted-foreground">
-                      Budget: {resource.budget}% | Actual: {resource.actual}%
-                    </span>
-                  </div>
-                  <div className="h-2 w-full rounded-full bg-secondary">
-                    <div
-                      className={`h-2 rounded-full ${resource.overBudget ? "bg-destructive" : "bg-primary"}`}
-                      style={{ width: `${resource.actual}%` }}
-                    />
-                  </div>
-                </div>
-              ))}
-
-              <div className="flex items-center justify-end space-x-4 pt-2">
-                <div className="flex items-center space-x-1">
-                  <div className="h-3 w-3 rounded-full bg-secondary" />
-                  <span className="text-xs text-muted-foreground">Allocated Budget</span>
-                </div>
-                <div className="flex items-center space-x-1">
-                  <div className="h-3 w-3 rounded-full bg-primary" />
-                  <span className="text-xs text-muted-foreground">Actual Usage</span>
-                </div>
-                <div className="flex items-center space-x-1">
-                  <div className="h-3 w-3 rounded-full bg-destructive" />
-                  <span className="text-xs text-muted-foreground">Over Budget</span>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
       </div>
-
-      {/* Activity Progress */}
-      
-      <Card>
+      <Card className="mt-6">
         <CardHeader>
-          <CardTitle>Activity Progress</CardTitle>
-          <p className="text-sm text-muted-foreground">Completion level of project activities</p>
+          <CardTitle>Fund Release Workflow {selectedProject ? `- ${selectedProject.name}` : ""}</CardTitle>
+          <CardDescription>Manage milestone-based fund release requests</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="space-y-6">
-            {mockData.activities.map((activity, index) => (
-              <div key={index} className="space-y-2">
-                <div className="flex justify-between">
-                  <div>
-                    <h4 className="font-medium">{activity.name}</h4>
-                    <p className="text-xs text-muted-foreground">Due: {formatDate(new Date(activity.dueDate))}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="font-medium">{activity.completion}%</p>
-                    <p className="text-xs text-muted-foreground">
-                      {activity.notStarted
-                        ? "Not started"
-                        : `${activity.teamMembers} team member${activity.teamMembers !== 1 ? "s" : ""} assigned`}
-                    </p>
-                  </div>
-                </div>
-                <Progress value={activity.completion} className="h-2" />
-              </div>
-            ))}
-          </div>
+          {!selectedProject ? (
+            <div className="text-center py-8 text-muted-foreground">
+              Please select a project to view its fund release workflow.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-muted/50">
+                  <tr>
+                    <th className="text-left py-3 px-4 font-medium text-muted-foreground">MILESTONE</th>
+                    <th className="text-left py-3 px-4 font-medium text-muted-foreground">DUE DATE</th>
+                    <th className="text-left py-3 px-4 font-medium text-muted-foreground">BUDGET</th>
+                    <th className="text-left py-3 px-4 font-medium text-muted-foreground">% OF TOTAL</th>
+                    <th className="text-left py-3 px-4 font-medium text-muted-foreground">STATUS</th>
+                    <th className="text-left py-3 px-4 font-medium text-muted-foreground">ACTIONS</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {milestones.map((milestone) => {
+                    const hasRequest = hasFundReleaseRequest(milestone.id)
+                    const requestStatus = getFundReleaseRequestStatus(milestone.id)
+
+                    return (
+                      <tr key={milestone.id} className="border-b border-muted">
+                        <td className="py-4 px-4">{milestone.name}</td>
+                        <td className="py-4 px-4">{new Date(milestone.date).toLocaleDateString()}</td>
+                        <td className="py-4 px-4">{formatCurrency(milestone.budget || 0)}</td>
+                        <td className="py-4 px-4">{milestone.percentOfTotal}%</td>
+                        <td className="py-4 px-4">
+                          <span className="bg-muted text-muted-foreground px-3 py-1 rounded-full text-xs">
+                            {milestone.status}
+                          </span>
+                        </td>
+                        <td className="py-4 px-4">
+                          {hasRequest ? (
+                            <span
+                              className={`px-3 py-1 rounded-full text-xs ${
+                                requestStatus === "Approved"
+                                  ? "bg-green-100 text-green-800"
+                                  : requestStatus === "Rejected"
+                                    ? "bg-red-100 text-red-800"
+                                    : "bg-yellow-100 text-yellow-800"
+                              }`}
+                            >
+                              {requestStatus === "Approved"
+                                ? "Approved"
+                                : requestStatus === "Rejected"
+                                  ? "Rejected"
+                                  : "Request Pending"}
+                            </span>
+                          ) : (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={requestingFunds === milestone.id}
+                              onClick={() => handleFundReleaseRequest(milestone)}
+                              className="whitespace-nowrap"
+                            >
+                              {requestingFunds === milestone.id ? (
+                                <span className="h-4 w-4 mr-2 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                              ) : null}
+                              Submit Fund Release Request
+                            </Button>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                  <tr className="bg-muted/20">
+                    <td className="py-4 px-4 font-medium">Total</td>
+                    <td className="py-4 px-4"></td>
+                    <td className="py-4 px-4 font-medium">{formatCurrency(totalBudget)}</td>
+                    <td className="py-4 px-4 font-medium">{totalPercentage}%</td>
+                    <td className="py-4 px-4"></td>
+                    <td className="py-4 px-4"></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          )}
         </CardContent>
       </Card>
-    </div>
-  )
-}
 
-function MetricCard({
-  title,
-  value,
-  description,
-  icon,
-}: {
-  title: string
-  value: string
-  description: string
-  icon: React.ReactNode
-}) {
-  return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between pb-2">
-        <CardTitle className="text-sm font-medium">{title}</CardTitle>
-        {icon}
-      </CardHeader>
-      <CardContent>
-        <div className="text-2xl font-bold">{value}</div>
-        <p className="text-xs text-muted-foreground">{description}</p>
-      </CardContent>
-    </Card>
+      {/* Fund Release Request Dialog */}
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Submit Fund Release Request</DialogTitle>
+            <DialogDescription>
+              Request funds for milestone completion. This will be sent to the Fund Custodian for approval.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="milestone" className="text-right">
+                Milestone
+              </Label>
+              <Input id="milestone" value={selectedMilestone?.name || ""} className="col-span-3" disabled />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="amount" className="text-right">
+                Amount
+              </Label>
+              <Input
+                id="amount"
+                value={formatCurrency(selectedMilestone?.budget || 0)}
+                className="col-span-3"
+                disabled
+              />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="description" className="text-right">
+                Description
+              </Label>
+              <Textarea
+                id="description"
+                placeholder="Provide details about this fund release request"
+                className="col-span-3"
+                value={releaseDescription}
+                onChange={(e) => setReleaseDescription(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={submitRequest}>Submit Request</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
   )
 }

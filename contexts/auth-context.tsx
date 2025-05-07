@@ -168,6 +168,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           // Redirect based on user role
           if (userProfile?.role === "Donor") {
             router.push("/donor-dashboard")
+          } else if (userProfile?.role === "Project Manager") {
+            router.push("/project-manager")
           } else {
             router.push("/dashboard")
           }
@@ -180,7 +182,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           pathname.startsWith("/account") ||
           pathname.startsWith("/users") ||
           pathname.startsWith("/donor-dashboard") ||
-          pathname.startsWith("/donated-projects")
+          pathname.startsWith("/donated-projects") ||
+          pathname.startsWith("/project-manager")
         ) {
           router.push("/login")
         }
@@ -217,6 +220,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Redirect based on role
       if (role === "Donor") {
         router.push("/donor-dashboard")
+      } else if (role === "Project Manager") {
+        router.push("/project-manager")
       } else {
         router.push("/dashboard")
       }
@@ -230,12 +235,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const auth = await getFirebaseAuth()
 
-      const userCredential = await signInWithEmailAndPassword(auth, email, password)
+      await signInWithEmailAndPassword(auth, email, password)
       // Redirect will happen in the useEffect based on user role
-      if (userCredential.user) {
-        // After successful login, redirect to dashboard
-        router.push("/dashboard")
-      }
     } catch (error: any) {
       console.error("Error during sign in:", error)
       throw new Error(error.message || "Failed to sign in")

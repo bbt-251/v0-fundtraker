@@ -33,8 +33,10 @@ import type {
   CommunicationPlan,
   SocialMediaAccount,
   CommunicationMedium,
+  FundReleaseRequest,
 } from "@/types/project"
 import type { MilestoneBudget } from "@/components/financial-resource-tab"
+import { auth } from "@/lib/firebase/firebase"
 
 // Collection reference
 const projectsCollection = collection(db, "projects")
@@ -1251,5 +1253,81 @@ export async function getProjectsByIds(projectIds: string[]): Promise<Project[]>
   } catch (error) {
     console.error("Error getting projects by IDs:", error)
     return []
+  }
+}
+
+// Function to submit a fund release request
+export const submitFundReleaseRequest = async (
+  projectId: string,
+  milestoneId: string,
+  amount: number,
+  description: string,
+): Promise<FundReleaseRequest> => {
+  try {
+    const requestId = uuidv4()
+    const projectRef = doc(db, "projects", projectId)
+    const projectSnap = await getDoc(projectRef)
+
+    if (projectSnap.exists()) {
+      const projectData = projectSnap.data() as Project
+      const fundReleaseRequests = projectData.fundReleaseRequests || []
+
+      const newRequest: FundReleaseRequest = {
+        id: requestId,
+        projectId,
+        milestoneId,
+        amount,
+        description,
+        status: "Pending",
+        requestedBy: auth.currentUser?.uid || "",
+        requestedByName: auth.currentUser?.displayName || "Project Manager",
+        requestDate: new Date().toISOString(),
+      }
+
+      const updatedRequests = [...fundReleaseRequests, newRequest]
+
+      await updateDoc(projectRef, { fundReleaseRequests: updatedRequests })
+      return newRequest
+    } else {
+      throw new Error("Project not found")
+    }
+  } catch (error) {
+    console.error("Error submitting fund release request:", error)
+    throw error
+  }
+}
+
+// Function to get fund release requests for a project
+export const getFundReleaseRequests = async (projectId: string): Promise<FundReleaseRequest[]> => {
+  try {
+    const projectRef = doc(db, "projects", projectId)
+    const projectSnap = await getDoc(projectRef)
+
+    if (projectSnap.exists()) {
+      const projectData = projectSnap.data() as Project
+      return projectData.fundReleaseRequests || []
+    } else {
+      throw new Error("Project not found")
+    }
+  } catch (error) {
+    console.error("Error getting fund release requests:", error)
+    throw error
+  }
+}
+
+// Function to get projects managed by a specific user
+export const getProjectsByManager = async (managerId: string): Promise<Project[]> => {
+  try {
+    const projectsRef = collection(db, "projects")
+    const q = query(projectsRef, where("projectManagerId", "==", managerId))
+    const querySnapshot = await getDocs(q)
+
+    return querySnapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    })) as Project[]
+  } catch (error) {
+    console.error("Error getting projects by manager:", error)
+    throw error
   }
 }

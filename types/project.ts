@@ -52,6 +52,8 @@ export interface Project {
   approvalStatus?: ProjectApprovalStatus
   announcementDate?: string
   milestoneBudgets?: MilestoneBudget[]
+  fundReleaseRequests?: FundReleaseRequest[]
+  projectManagerId?: string
 }
 
 export interface ProjectFormData {
@@ -158,6 +160,8 @@ export interface ProjectMilestone {
   status: "Not Started" | "In Progress" | "Completed" | "Delayed"
   associatedDeliverables?: string[]
   createdAt: string
+  budget?: number
+  percentOfTotal?: number
 }
 
 export interface DecisionGate {
@@ -215,4 +219,20 @@ export interface MilestoneBudget {
   milestoneId: string
   budgetItem: string
   cost: number
+}
+
+export interface FundReleaseRequest {
+  id: string
+  projectId: string
+  milestoneId: string
+  amount: number
+  description: string
+  status: "Pending" | "Approved" | "Rejected"
+  requestedBy: string
+  requestedByName: string
+  requestDate: string
+  approvedBy?: string
+  approvedByName?: string
+  approvalDate?: string
+  rejectionReason?: string
 }
