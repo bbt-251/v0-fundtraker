@@ -162,7 +162,7 @@ interface FundReleaseRequest {
   requestDate: string
   approvedBy?: string
   approvedByName?: string
-  approvalDate?: string
+  reviewedDate?: string
   rejectionReason?: string
   projectName?: string
   milestoneName?: string
@@ -662,8 +662,8 @@ export default function FundCustodianDashboard() {
               status: newStatus,
               approvedBy: userProfile?.uid || "",
               approvedByName: userProfile?.displayName || "Fund Custodian",
-              approvalDate: new Date().toISOString(),
-              rejectionReason: newStatus === "Rejected" ? "Request rejected by fund custodian" : undefined,
+              reviewedDate: new Date().toISOString(),
+              ...(newStatus === "Rejected"?{ rejectionReason: "Request rejected by fund custodian"}:{}),
             }
           }
           return request
@@ -683,7 +683,7 @@ export default function FundCustodianDashboard() {
                 status: newStatus,
                 approvedBy: userProfile?.uid || "",
                 approvedByName: userProfile?.displayName || "Fund Custodian",
-                approvalDate: new Date().toISOString(),
+                reviewedDate: new Date().toISOString(),
                 rejectionReason: newStatus === "Rejected" ? "Request rejected by fund custodian" : undefined,
               }
             }
@@ -1323,8 +1323,8 @@ export default function FundCustodianDashboard() {
                                           ) : (
                                             <span className="text-sm text-muted-foreground">
                                               {request.status === "Approved"
-                                                ? `Approved on ${formatDate(request.approvalDate)}`
-                                                : `Rejected on ${formatDate(request.approvalDate)}`}
+                                                ? `Approved on ${formatDate(request.reviewedDate)}`
+                                                : `Rejected on ${formatDate(request.reviewedDate)}`}
                                             </span>
                                           )}
                                         </td>

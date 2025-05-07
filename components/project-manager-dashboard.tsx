@@ -302,7 +302,7 @@ export function ProjectManagerDashboard() {
       await submitFundReleaseRequest(
         selectedProject.id,
         selectedMilestoneBudget.milestoneId,
-        selectedMilestoneBudget.amount || 0,
+        selectedMilestoneBudget.budget || 0,
         releaseDescription,
       )
 
@@ -312,7 +312,7 @@ export function ProjectManagerDashboard() {
 
       toast({
         title: "Fund release request submitted",
-        description: `Your request for ${formatCurrency(selectedMilestoneBudget.amount || 0)} has been sent to the Fund Custodian for approval.`,
+        description: `Your request for ${formatCurrency(selectedMilestoneBudget.budget || 0)} has been sent to the Fund Custodian for approval.`,
       })
     } catch (error) {
       console.error("Error submitting fund release request:", error)
