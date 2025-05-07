@@ -1,5 +1,7 @@
 "use client"
 
+import type React from "react"
+
 import { useState, useEffect } from "react"
 import { useAuth } from "@/contexts/auth-context"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -20,8 +22,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { submitFundReleaseRequest, getFundReleaseRequests } from "@/services/project-service"
-import type { Project, ProjectMilestone, FundReleaseRequest } from "@/types/project"
-import { collection, query, where, getDocs } from "firebase/firestore"
+import type { Project, FundReleaseRequest, MilestoneBudget } from "@/types/project"
+import { collection, query, getDocs } from "firebase/firestore"
 import { db } from "@/lib/firebase/firebase-client"
 
 export function ProjectManagerDashboard() {
@@ -30,12 +32,14 @@ export function ProjectManagerDashboard() {
   const [loading, setLoading] = useState(true)
   const [projects, setProjects] = useState<Project[]>([])
   const [selectedProject, setSelectedProject] = useState<Project | null>(null)
-  const [milestones, setMilestones] = useState<ProjectMilestone[]>([])
+  const [milestoneBudgets, setMilestoneBudgets] = useState<MilestoneBudget[]>([])
   const [fundReleaseRequests, setFundReleaseRequests] = useState<FundReleaseRequest[]>([])
   const [requestingFunds, setRequestingFunds] = useState<string | null>(null)
-  const [selectedMilestone, setSelectedMilestone] = useState<ProjectMilestone | null>(null)
+  const [selectedMilestoneBudget, setSelectedMilestoneBudget] = useState<MilestoneBudget | null>(null)
   const [releaseDescription, setReleaseDescription] = useState("")
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [humanResources, setHumanResources] = useState<any[]>([])
+  const [materialResources, setMaterialResources] = useState<any[]>([])
 
   const { user } = useAuth()
 
@@ -67,7 +71,28 @@ export function ProjectManagerDashboard() {
 
         if (projectsData.length > 0) {
           setSelectedProject(projectsData[0])
-          setMilestones(projectsData[0].milestones || [])
+          setHumanResources(projectsData[0].humanResources || [])
+          setMaterialResources(projectsData[0].materialResources || [])
+
+          // Get milestone budgets for this project
+          if (projectsData[0].milestoneBudgets && projectsData[0].milestoneBudgets.length > 0) {
+            setMilestoneBudgets(projectsData[0].milestoneBudgets)
+          } else {
+            // If no milestone budgets found, try to create them from milestones
+            const milestones = projectsData[0].milestones || []
+            const convertedBudgets = milestones.map((milestone) => ({
+              id: milestone.id,
+              milestoneId: milestone.id,
+              milestoneName: milestone.name,
+              amount: milestone.budget || 0,
+              percentOfTotal: milestone.percentOfTotal || 0,
+              status: "Pending",
+              dueDate: milestone.date,
+              description: milestone.description || "",
+              createdAt: milestone.createdAt || new Date().toISOString(),
+            }))
+            setMilestoneBudgets(convertedBudgets)
+          }
 
           // Fetch fund release requests for this project
           if (projectsData[0].id) {
@@ -149,21 +174,99 @@ export function ProjectManagerDashboard() {
             percentOfTotal: 2,
           },
         ],
+        milestoneBudgets: [
+          {
+            id: "budget-1",
+            milestoneId: "milestone-1",
+            milestoneName: "Initial Research & Planning",
+            amount: 40000,
+            percentOfTotal: 19,
+            status: "Pending",
+            dueDate: "2025-05-05",
+            description: "Budget for research and planning phase",
+            createdAt: new Date().toISOString(),
+          },
+          {
+            id: "budget-2",
+            milestoneId: "milestone-2",
+            milestoneName: "Design Phase",
+            amount: 4000,
+            percentOfTotal: 2,
+            status: "Pending",
+            dueDate: "2025-06-15",
+            description: "Budget for design phase",
+            createdAt: new Date().toISOString(),
+          },
+          {
+            id: "budget-3",
+            milestoneId: "milestone-3",
+            milestoneName: "MVP Development",
+            amount: 5000,
+            percentOfTotal: 2,
+            status: "Pending",
+            dueDate: "2025-08-30",
+            description: "Budget for MVP development",
+            createdAt: new Date().toISOString(),
+          },
+        ],
         fundReleaseRequests: [],
       }
 
       setProjects([mockProject])
       setSelectedProject(mockProject)
-      setMilestones(mockProject.milestones || [])
+      setMilestoneBudgets(mockProject.milestoneBudgets || [])
       setFundReleaseRequests([])
     }
 
     fetchUserProjects()
   }, [user?.uid, userProfile?.displayName])
 
+  // Handle project selection change
+  const handleProjectChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const projectId = e.target.value
+    const project = projects.find((p) => p.id === projectId)
+
+    if (project) {
+      setSelectedProject(project)
+      setHumanResources(project.humanResources || [])
+      setMaterialResources(project.materialResources || [])
+
+      // Get milestone budgets for this project
+      if (project.milestoneBudgets && project.milestoneBudgets.length > 0) {
+        setMilestoneBudgets(project.milestoneBudgets)
+      } else {
+        // If no milestone budgets found, try to create them from milestones
+        const milestones = project.milestones || []
+        const convertedBudgets = milestones.map((milestone) => ({
+          id: milestone.id,
+          milestoneId: milestone.id,
+          milestoneName: milestone.name,
+          amount: milestone.budget || 0,
+          percentOfTotal: milestone.percentOfTotal || 0,
+          status: "Pending",
+          dueDate: milestone.date,
+          description: milestone.description || "",
+          createdAt: milestone.createdAt || new Date().toISOString(),
+        }))
+        setMilestoneBudgets(convertedBudgets)
+      }
+
+      // Fetch fund release requests for this project
+      if (project.id) {
+        try {
+          const requests = await getFundReleaseRequests(project.id)
+          setFundReleaseRequests(requests)
+        } catch (error) {
+          console.error("Error fetching fund release requests:", error)
+          setFundReleaseRequests([])
+        }
+      }
+    }
+  }
+
   // Calculate total budget and percentage
-  const totalBudget = milestones.reduce((sum, milestone) => sum + (milestone.budget || 0), 0)
-  const totalPercentage = milestones.reduce((sum, milestone) => sum + (milestone.percentOfTotal || 0), 0)
+  const totalBudget = milestoneBudgets.reduce((sum, budget) => sum + (budget.amount || 0), 0)
+  const totalPercentage = milestoneBudgets.reduce((sum, budget) => sum + (budget.percentOfTotal || 0), 0)
 
   // Sample data for Gantt chart
   const ganttData = [
@@ -182,24 +285,24 @@ export function ProjectManagerDashboard() {
     { name: "Management", allocated: 5, actual: 7 },
   ]
 
-  const handleFundReleaseRequest = async (milestone: ProjectMilestone) => {
-    setSelectedMilestone(milestone)
+  const handleFundReleaseRequest = async (milestoneBudget: MilestoneBudget) => {
+    setSelectedMilestoneBudget(milestoneBudget)
     setReleaseDescription("")
     setDialogOpen(true)
   }
 
   const submitRequest = async () => {
-    if (!selectedMilestone || !selectedProject || !user) return
+    if (!selectedMilestoneBudget || !selectedProject || !user) return
 
     try {
-      setRequestingFunds(selectedMilestone.id)
+      setRequestingFunds(selectedMilestoneBudget.id)
       setDialogOpen(false)
 
       // Submit the fund release request to Firebase
       await submitFundReleaseRequest(
         selectedProject.id,
-        selectedMilestone.id,
-        selectedMilestone.budget || 0,
+        selectedMilestoneBudget.milestoneId,
+        selectedMilestoneBudget.amount || 0,
         releaseDescription,
       )
 
@@ -209,7 +312,7 @@ export function ProjectManagerDashboard() {
 
       toast({
         title: "Fund release request submitted",
-        description: `Your request for ${formatCurrency(selectedMilestone.budget || 0)} has been sent to the Fund Custodian for approval.`,
+        description: `Your request for ${formatCurrency(selectedMilestoneBudget.amount || 0)} has been sent to the Fund Custodian for approval.`,
       })
     } catch (error) {
       console.error("Error submitting fund release request:", error)
@@ -236,6 +339,36 @@ export function ProjectManagerDashboard() {
     const request = fundReleaseRequests.find((request) => request.milestoneId === milestoneId)
     return request ? request.status : null
   }
+
+   // Calculate total costs
+  const calculateHumanResourceCost = (resource: HumanResource) => {
+    return resource.costPerDay * resource.quantity * 30 // Assuming 30 days as default
+  }
+
+  const calculateMaterialResourceCost = (resource: MaterialResource) => {
+    // For one-time costs, just return the amount
+    if (resource.costType === "one-time") {
+      return resource.costAmount
+    }
+    // For recurring costs, calculate based on amortization period (assuming 30 days as default)
+    return (resource.costAmount * 30) / resource.amortizationPeriod
+  }
+
+  const calculateHumanResourceTotal = () => {
+    return humanResources.reduce((total, resource) => {
+      return total + calculateHumanResourceCost(resource)
+    }, 0)
+  }
+
+  const calculateMaterialResourceTotal = () => {
+    return materialResources.reduce((total, resource) => {
+      return total + calculateMaterialResourceCost(resource)
+    }, 0)
+  }
+
+  const humanResourceTotal = calculateHumanResourceTotal()
+  const materialResourceTotal = calculateMaterialResourceTotal()
+  const totalCost = humanResourceTotal + materialResourceTotal || 1 // Prevent division by zero
 
   if (loading) {
     return (
@@ -264,24 +397,7 @@ export function ProjectManagerDashboard() {
             id="project-select"
             className="w-full p-2 border rounded-md mt-1"
             value={selectedProject?.id || ""}
-            onChange={(e) => {
-              const projectId = e.target.value
-              const project = projects.find((p) => p.id === projectId)
-              if (project) {
-                setSelectedProject(project)
-                setMilestones(project.milestones || [])
-
-                // Fetch fund release requests for this project
-                if (project.id) {
-                  getFundReleaseRequests(project.id)
-                    .then((requests) => setFundReleaseRequests(requests))
-                    .catch((error) => {
-                      console.error("Error fetching fund release requests:", error)
-                      setFundReleaseRequests([])
-                    })
-                }
-              }
-            }}
+            onChange={handleProjectChange}
           >
             <option value="" disabled>
               Select a project
@@ -491,7 +607,7 @@ export function ProjectManagerDashboard() {
       <Card className="mt-6">
         <CardHeader>
           <CardTitle>Fund Release Workflow {selectedProject ? `- ${selectedProject.name}` : ""}</CardTitle>
-          <CardDescription>Manage milestone-based fund release requests</CardDescription>
+          <CardDescription>Manage milestone budget-based fund release requests</CardDescription>
         </CardHeader>
         <CardContent>
           {!selectedProject ? (
@@ -512,64 +628,83 @@ export function ProjectManagerDashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {milestones.map((milestone) => {
-                    const hasRequest = hasFundReleaseRequest(milestone.id)
-                    const requestStatus = getFundReleaseRequestStatus(milestone.id)
+                  {milestoneBudgets.length > 0 ? (
+                    milestoneBudgets.map((budget) => {
+                      const hasRequest = hasFundReleaseRequest(budget.milestoneId)
+                      const requestStatus = getFundReleaseRequestStatus(budget.milestoneId)
+                      const percentOfTotal = totalCost > 0 ? (budget.amount / totalCost) * 100 : 0
 
-                    return (
-                      <tr key={milestone.id} className="border-b border-muted">
-                        <td className="py-4 px-4">{milestone.name}</td>
-                        <td className="py-4 px-4">{new Date(milestone.date).toLocaleDateString()}</td>
-                        <td className="py-4 px-4">{formatCurrency(milestone.budget || 0)}</td>
-                        <td className="py-4 px-4">{milestone.percentOfTotal}%</td>
-                        <td className="py-4 px-4">
-                          <span className="bg-muted text-muted-foreground px-3 py-1 rounded-full text-xs">
-                            {milestone.status}
-                          </span>
-                        </td>
-                        <td className="py-4 px-4">
-                          {hasRequest ? (
+                      return (
+                        <tr key={budget.id} className="border-b border-muted">
+                          <td className="py-4 px-4">{budget.milestoneName}</td>
+                          <td className="py-4 px-4">{new Date(budget.dueDate).toLocaleDateString()}</td>
+                          <td className="py-4 px-4">{formatCurrency(budget.amount)}</td>
+                          <td className="py-4 px-4">{percentOfTotal.toFixed(0)}%</td>
+                          <td className="py-4 px-4">
                             <span
-                              className={`px-3 py-1 rounded-full text-xs ${
-                                requestStatus === "Approved"
-                                  ? "bg-green-100 text-green-800"
-                                  : requestStatus === "Rejected"
-                                    ? "bg-red-100 text-red-800"
-                                    : "bg-yellow-100 text-yellow-800"
+                              className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                budget.status === "Completed"
+                                  ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300"
+                                  : budget.status === "In-progress"
+                                    ? "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300"
+                                    : "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300"
                               }`}
                             >
-                              {requestStatus === "Approved"
-                                ? "Approved"
-                                : requestStatus === "Rejected"
-                                  ? "Rejected"
-                                  : "Request Pending"}
+                              {budget.status}
                             </span>
-                          ) : (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              disabled={requestingFunds === milestone.id}
-                              onClick={() => handleFundReleaseRequest(milestone)}
-                              className="whitespace-nowrap"
-                            >
-                              {requestingFunds === milestone.id ? (
-                                <span className="h-4 w-4 mr-2 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-                              ) : null}
-                              Submit Fund Release Request
-                            </Button>
-                          )}
-                        </td>
-                      </tr>
-                    )
-                  })}
-                  <tr className="bg-muted/20">
-                    <td className="py-4 px-4 font-medium">Total</td>
-                    <td className="py-4 px-4"></td>
-                    <td className="py-4 px-4 font-medium">{formatCurrency(totalBudget)}</td>
-                    <td className="py-4 px-4 font-medium">{totalPercentage}%</td>
-                    <td className="py-4 px-4"></td>
-                    <td className="py-4 px-4"></td>
-                  </tr>
+                          </td>
+                          <td className="py-4 px-4">
+                            {hasRequest ? (
+                              <span
+                                className={`px-3 py-1 rounded-full text-xs ${
+                                  requestStatus === "Approved"
+                                    ? "bg-green-100 text-green-800"
+                                    : requestStatus === "Rejected"
+                                      ? "bg-red-100 text-red-800"
+                                      : "bg-yellow-100 text-yellow-800"
+                                }`}
+                              >
+                                {requestStatus === "Approved"
+                                  ? "Approved"
+                                  : requestStatus === "Rejected"
+                                    ? "Rejected"
+                                    : "Request Pending"}
+                              </span>
+                            ) : (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                disabled={requestingFunds === budget.id}
+                                onClick={() => handleFundReleaseRequest(budget)}
+                                className="whitespace-nowrap"
+                              >
+                                {requestingFunds === budget.id ? (
+                                  <span className="h-4 w-4 mr-2 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                                ) : null}
+                                Submit Fund Release Request
+                              </Button>
+                            )}
+                          </td>
+                        </tr>
+                      )
+                    })
+                  ) : (
+                    <tr>
+                      <td colSpan={6} className="py-8 text-center text-muted-foreground">
+                        No milestone budgets found for this project.
+                      </td>
+                    </tr>
+                  )}
+                  {milestoneBudgets.length > 0 && (
+                    <tr className="bg-muted/20">
+                      <td className="py-4 px-4 font-medium">Total</td>
+                      <td className="py-4 px-4"></td>
+                      <td className="py-4 px-4 font-medium">{formatCurrency(totalBudget)}</td>
+                      <td className="py-4 px-4 font-medium">{totalPercentage}%</td>
+                      <td className="py-4 px-4"></td>
+                      <td className="py-4 px-4"></td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -591,7 +726,12 @@ export function ProjectManagerDashboard() {
               <Label htmlFor="milestone" className="text-right">
                 Milestone
               </Label>
-              <Input id="milestone" value={selectedMilestone?.name || ""} className="col-span-3" disabled />
+              <Input
+                id="milestone"
+                value={selectedMilestoneBudget?.milestoneName || ""}
+                className="col-span-3"
+                disabled
+              />
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="amount" className="text-right">
@@ -599,7 +739,7 @@ export function ProjectManagerDashboard() {
               </Label>
               <Input
                 id="amount"
-                value={formatCurrency(selectedMilestone?.budget || 0)}
+                value={formatCurrency(selectedMilestoneBudget?.amount || 0)}
                 className="col-span-3"
                 disabled
               />
