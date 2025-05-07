@@ -183,6 +183,7 @@ export function ProjectManagerDashboard() {
       </div>
 
       {/* Activity Progress */}
+      
       <Card>
         <CardHeader>
           <CardTitle>Activity Progress</CardTitle>

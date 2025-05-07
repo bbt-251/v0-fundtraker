@@ -798,7 +798,7 @@ export default function FundCustodianDashboard() {
 
       {/* Main Content */}
       <div className="container mx-auto px-4 py-6">
-        <h1 className="text-2xl font-bold mb-6">Fund Custodian Dashboard</h1>
+        <h1 className="text-2xl font-bold mb-6">Fund Custodian Dashboar</h1>
 
         <Card className="mb-6 border-0 shadow-sm">
           <CardContent className="p-0">
