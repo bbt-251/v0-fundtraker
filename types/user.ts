@@ -1,10 +1,4 @@
-export type UserRole =
-  | "Project Owner"
-  | "Fund Custodian"
-  | "Platform Governor"
-  | "Donor"
-  | "Investor"
-  | "Project Manager"
+export type UserRole = "Project Owner" | "Fund Custodian" | "Platform Governor" | "Donor" | "Investor"
 
 export type VerificationStatus = "unverified" | "pending" | "verified" | "rejected"
 

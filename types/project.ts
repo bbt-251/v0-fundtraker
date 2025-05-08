@@ -53,6 +53,7 @@ export interface Project {
   announcementDate?: string
   milestoneBudgets?: MilestoneBudget[]
   fundReleaseRequests?: FundReleaseRequest[]
+  scheduledTransfers?: ScheduledTransfer[]
   projectManagerId?: string
 }
 
@@ -123,6 +124,9 @@ export interface ProjectTask {
   duration: number
   resources: TaskResourceAssignment[]
   createdAt: string
+  // Add new field for multiple date ranges
+  dateRanges?: { startDate: string; endDate: string }[]
+  multipleRanges?: boolean
 }
 
 export interface TaskResourceAssignment {
@@ -135,6 +139,9 @@ export interface TaskResourceAssignment {
   duration: number
   dailyCost: number
   totalCost: number
+  // Add new field for multiple date ranges
+  dateRanges?: { startDate: string; endDate: string }[]
+  multipleRanges?: boolean
 }
 
 export interface ProjectDeliverable {
@@ -237,4 +244,28 @@ export interface FundReleaseRequest {
   approvedByName?: string
   approvalDate?: string
   rejectionReason?: string
+}
+
+export interface ScheduledTransfer {
+  id: string
+  projectId: string
+  projectName: string
+  milestoneId: string
+  milestoneName: string
+  fundReleaseRequestId: string
+  recipientId: string
+  recipientName: string
+  accountName: string
+  accountNumber: string
+  bankName: string
+  amount: number
+  status: "To be Transferred" | "Pending" | "Transferred"
+  scheduledDate?: string
+  transferredDate?: string
+  transferredBy?: string
+  transferredByName?: string
+  requestedBy: string
+  requestedByName: string
+  requestDate: string
+  notes?: string
 }

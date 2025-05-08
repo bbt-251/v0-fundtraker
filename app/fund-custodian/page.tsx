@@ -29,6 +29,9 @@ import RecentDonations from "@/components/recent-donations"
 import { AppHeader } from "@/components/app-header"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
+// Import the new component
+import { ScheduledTransfersTab } from "@/components/scheduled-transfers-tab"
+
 // Sample data for Monthly Cash Flow
 const monthlyData = [
   { name: "Jan", inflow: 45000, outflow: 22000 },
@@ -632,7 +635,7 @@ export default function FundCustodianDashboard() {
     }
   }
 
-  // Function to handle fund release request approval or rejection
+  // Update the handleFundReleaseRequestUpdate function to create a scheduled transfer when a request is approved
   const handleFundReleaseRequestUpdate = async (
     requestId: string,
     projectId: string,
@@ -663,7 +666,7 @@ export default function FundCustodianDashboard() {
               approvedBy: userProfile?.uid || "",
               approvedByName: userProfile?.displayName || "Fund Custodian",
               reviewedDate: new Date().toISOString(),
-              ...(newStatus === "Rejected"?{ rejectionReason: "Request rejected by fund custodian"}:{}),
+              ...(newStatus === "Rejected" ? { rejectionReason: "Request rejected by fund custodian" } : {}),
             }
           }
           return request
@@ -690,6 +693,42 @@ export default function FundCustodianDashboard() {
             return request
           }),
         )
+
+        // If the request was approved, create a scheduled transfer
+        if (newStatus === "Approved") {
+          // Find the request
+          const request = projectData.fundReleaseRequests.find((r: any) => r.id === requestId)
+
+          if (request) {
+            // Find a suitable fund account (for demo purposes, just use the first one)
+            const fundAccount =
+              projectData.fundAccounts && projectData.fundAccounts.length > 0 ? projectData.fundAccounts[0] : null
+
+            if (fundAccount) {
+              try {
+                await createScheduledTransfer(projectId, requestId, fundAccount.id)
+                toast({
+                  title: "Success",
+                  description: "Scheduled transfer created successfully.",
+                  variant: "default",
+                })
+              } catch (error) {
+                console.error("Error creating scheduled transfer:", error)
+                toast({
+                  title: "Warning",
+                  description: "Fund release request approved but failed to create scheduled transfer.",
+                  variant: "destructive",
+                })
+              }
+            } else {
+              toast({
+                title: "Warning",
+                description: "Fund release request approved but no fund account found to create scheduled transfer.",
+                variant: "destructive",
+              })
+            }
+          }
+        }
 
         toast({
           title: "Success",
@@ -935,6 +974,19 @@ export default function FundCustodianDashboard() {
     } finally {
       setVerifyingMilestone(false)
     }
+  }
+
+  // Dummy function to simulate creating a scheduled transfer
+  const createScheduledTransfer = async (projectId: string, fundReleaseRequestId: string, fundAccountId: string) => {
+    // Simulate an API call or database operation
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        console.log(
+          `Scheduled transfer created for project ${projectId}, fund release request ${fundReleaseRequestId}, using fund account ${fundAccountId}`,
+        )
+        resolve(true)
+      }, 1000)
+    })
   }
 
   return (
@@ -1415,67 +1467,7 @@ export default function FundCustodianDashboard() {
 
                       {/* Scheduled Transfers Tab */}
                       <TabsContent value="scheduled" className="space-y-6 mt-6">
-                        <h3 className="text-lg font-bold">Scheduled Fund Transfers</h3>
-                        <p className="text-sm text-muted-foreground">
-                          Manage and schedule fund transfers to project owners upon milestone approval
-                        </p>
-
-                        <div className="overflow-x-auto mt-6">
-                          <table className="w-full">
-                            <thead>
-                              <tr className="border-b">
-                                <th className="text-left py-3 font-medium">Project</th>
-                                <th className="text-left py-3 font-medium">Milestone</th>
-                                <th className="text-left py-3 font-medium">Recipient</th>
-                                <th className="text-left py-3 font-medium">Amount</th>
-                                <th className="text-left py-3 font-medium">Scheduled Date</th>
-                                <th className="text-left py-3 font-medium">Status</th>
-                                <th className="text-left py-3 font-medium">Actions</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              <tr className="border-b">
-                                <td className="py-4">Clean Water Initiative</td>
-                                <td className="py-4">Initial Site Assessment</td>
-                                <td className="py-4">Clean Water Foundation</td>
-                                <td className="py-4">$30,000</td>
-                                <td className="py-4">Jun 28, 2023, 01:00 PM</td>
-                                <td className="py-4">
-                                  <span className="bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full text-xs">
-                                    Pending
-                                  </span>
-                                </td>
-                                <td className="py-4">
-                                  <div className="flex gap-2">
-                                    <Button variant="outline" size="sm">
-                                      Process
-                                    </Button>
-                                    <Button variant="outline" size="sm">
-                                      Notify
-                                    </Button>
-                                  </div>
-                                </td>
-                              </tr>
-                              <tr>
-                                <td className="py-4">Sustainable Energy Project</td>
-                                <td className="py-4">Solar Panel Procurement</td>
-                                <td className="py-4">Green Energy Alliance</td>
-                                <td className="py-4">$35,000</td>
-                                <td className="py-4">Jun 25, 2023, 05:30 PM</td>
-                                <td className="py-4">
-                                  <span className="bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs">
-                                    Completed
-                                  </span>
-                                </td>
-                                <td className="py-4">
-                                  <Button variant="outline" size="sm">
-                                    Notify
-                                  </Button>
-                                </td>
-                              </tr>
-                            </tbody>
-                          </table>
-                        </div>
+                        <ScheduledTransfersTab />
                       </TabsContent>
 
                       {/* Financial Reports Tab */}

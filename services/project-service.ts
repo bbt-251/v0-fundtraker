@@ -1,5 +1,3 @@
-"use client"
-
 import { db, storage } from "@/lib/firebase/firebase"
 import {
   collection,
@@ -34,9 +32,10 @@ import type {
   SocialMediaAccount,
   CommunicationMedium,
   FundReleaseRequest,
+  ScheduledTransfer,
 } from "@/types/project"
-import type { MilestoneBudget } from "@/components/financial-resource-tab"
 import { auth } from "@/lib/firebase/firebase"
+import type { MilestoneBudget } from "@/components/financial-resource-tab"
 
 // Collection reference
 const projectsCollection = collection(db, "projects")
@@ -616,7 +615,13 @@ export const addProjectTask = async (
     if (projectSnap.exists()) {
       const projectData = projectSnap.data() as Project
       const tasks = projectData.tasks || []
-      const newTask = { id: taskId, resources: [], ...task }
+
+      const newTask = {
+        id: taskId,
+        resources: [],
+        ...task,
+      }
+
       const updatedTasks = [...tasks, newTask]
 
       await updateDoc(projectRef, { tasks: updatedTasks })
@@ -901,75 +906,6 @@ export const deleteProjectMilestone = async (projectId: string, milestoneId: str
     }
   } catch (error) {
     console.error("Error deleting project milestone:", error)
-    throw error
-  }
-}
-
-// Function to get project milestones
-export const getMilestones = async (projectId: string): Promise<ProjectMilestone[]> => {
-  try {
-    const projectRef = doc(db, "projects", projectId)
-    const projectSnap = await getDoc(projectRef)
-
-    if (projectSnap.exists()) {
-      const projectData = projectSnap.data() as Project
-      return projectData.milestones || []
-    } else {
-      throw new Error("Project not found")
-    }
-  } catch (error) {
-    console.error("Error getting project milestones:", error)
-    throw error
-  }
-}
-
-// Function to add a milestone budget
-export const addMilestoneBudget = async (
-  projectId: string,
-  budget: Omit<MilestoneBudget, "id">,
-): Promise<MilestoneBudget> => {
-  try {
-    const budgetId = uuidv4()
-    const projectRef = doc(db, "projects", projectId)
-    const projectSnap = await getDoc(projectRef)
-
-    if (projectSnap.exists()) {
-      const projectData = projectSnap.data() as Project
-      const milestoneBudgets = projectData.milestoneBudgets || []
-
-      const newBudget = { id: budgetId, ...budget }
-      const updatedBudgets = [...milestoneBudgets, newBudget]
-
-      await updateDoc(projectRef, { milestoneBudgets: updatedBudgets })
-      return newBudget
-    } else {
-      throw new Error("Project not found")
-    }
-  } catch (error) {
-    console.error("Error adding milestone budget:", error)
-    throw error
-  }
-}
-
-// Function to update a milestone budget
-export const updateMilestoneBudget = async (projectId: string, budget: MilestoneBudget): Promise<MilestoneBudget> => {
-  try {
-    const projectRef = doc(db, "projects", projectId)
-    const projectSnap = await getDoc(projectRef)
-
-    if (projectSnap.exists()) {
-      const projectData = projectSnap.data() as Project
-      const milestoneBudgets = projectData.milestoneBudgets || []
-
-      const updatedBudgets = milestoneBudgets.map((item) => (item.id === budget.id ? budget : item))
-
-      await updateDoc(projectRef, { milestoneBudgets: updatedBudgets })
-      return budget
-    } else {
-      throw new Error("Project not found")
-    }
-  } catch (error) {
-    console.error("Error updating milestone budget:", error)
     throw error
   }
 }
@@ -1328,6 +1264,198 @@ export const getProjectsByManager = async (managerId: string): Promise<Project[]
     })) as Project[]
   } catch (error) {
     console.error("Error getting projects by manager:", error)
+    throw error
+  }
+}
+
+// Function to get projects owned by a specific user
+export const getProjectsByOwner = async (ownerId: string): Promise<Project[]> => {
+  try {
+    const projectsRef = collection(db, "projects")
+    const q = query(projectsRef, where("userId", "==", ownerId))
+    const querySnapshot = await getDocs(q)
+
+    return querySnapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    })) as Project[]
+  } catch (error) {
+    console.error("Error getting projects by owner:", error)
+    throw error
+  }
+}
+
+// Function to add a new milestone budget
+export const addMilestoneBudget = async (
+  projectId: string,
+  budget: Omit<MilestoneBudget, "id">,
+): Promise<MilestoneBudget> => {
+  try {
+    const budgetId = uuidv4()
+    const projectRef = doc(db, "projects", projectId)
+    const projectSnap = await getDoc(projectRef)
+
+    if (projectSnap.exists()) {
+      const projectData = projectSnap.data() as Project
+      const budgets = projectData.milestoneBudgets || []
+
+      const newBudget = { id: budgetId, ...budget }
+      const updatedBudgets = [...budgets, newBudget]
+
+      await updateDoc(projectRef, { milestoneBudgets: updatedBudgets })
+      return newBudget
+    } else {
+      throw new Error("Project not found")
+    }
+  } catch (error) {
+    console.error("Error adding milestone budget:", error)
+    throw error
+  }
+}
+
+// Function to update an existing milestone budget
+export const updateMilestoneBudget = async (
+  projectId: string,
+  updates: Partial<MilestoneBudget> & { id: string },
+): Promise<MilestoneBudget> => {
+  try {
+    const projectRef = doc(db, "projects", projectId)
+    const projectSnap = await getDoc(projectRef)
+
+    if (projectSnap.exists()) {
+      const projectData = projectSnap.data() as Project
+      const budgets = projectData.milestoneBudgets || []
+
+      const updatedBudgets = budgets.map((budget) => (budget.id === updates.id ? { ...budget, ...updates } : budget))
+
+      await updateDoc(projectRef, { milestoneBudgets: updatedBudgets })
+      return updatedBudgets.find((budget) => budget.id === updates.id) as MilestoneBudget
+    } else {
+      throw new Error("Project not found")
+    }
+  } catch (error) {
+    console.error("Error updating milestone budget:", error)
+    throw error
+  }
+}
+
+// Function to create a scheduled transfer when a fund release request is approved
+export const createScheduledTransfer = async (
+  projectId: string,
+  fundReleaseRequestId: string,
+  recipientId: string,
+): Promise<ScheduledTransfer> => {
+  try {
+    const transferId = uuidv4()
+    const projectRef = doc(db, "projects", projectId)
+    const projectSnap = await getDoc(projectRef)
+
+    if (!projectSnap.exists()) {
+      throw new Error("Project not found")
+    }
+
+    const projectData = projectSnap.data() as Project
+
+    // Find the fund release request
+    const fundReleaseRequest = projectData.fundReleaseRequests?.find((request) => request.id === fundReleaseRequestId)
+
+    if (!fundReleaseRequest) {
+      throw new Error("Fund release request not found")
+    }
+
+    // Find the milestone
+    const milestone = projectData.milestones?.find((m) => m.id === fundReleaseRequest.milestoneId)
+
+    if (!milestone) {
+      throw new Error("Milestone not found")
+    }
+
+    // Find the recipient (fund account)
+    const fundAccount = projectData.fundAccounts?.find((account) => account.id === recipientId)
+
+    if (!fundAccount) {
+      throw new Error("Fund account not found")
+    }
+
+    // Create the scheduled transfer
+    const scheduledTransfer: ScheduledTransfer = {
+      id: transferId,
+      projectId,
+      projectName: projectData.name,
+      milestoneId: fundReleaseRequest.milestoneId,
+      milestoneName: milestone.name,
+      fundReleaseRequestId,
+      recipientId,
+      recipientName: fundAccount.accountOwnerName,
+      accountName: fundAccount.accountName,
+      accountNumber: fundAccount.accountNumber || "",
+      bankName: fundAccount.bankName,
+      amount: fundReleaseRequest.amount,
+      status: "To be Transferred",
+      requestedBy: fundReleaseRequest.requestedBy,
+      requestedByName: fundReleaseRequest.requestedByName,
+      requestDate: fundReleaseRequest.requestDate,
+    }
+
+    // Add the scheduled transfer to the project
+    const scheduledTransfers = projectData.scheduledTransfers || []
+    const updatedScheduledTransfers = [...scheduledTransfers, scheduledTransfer]
+
+    await updateDoc(projectRef, { scheduledTransfers: updatedScheduledTransfers })
+
+    return scheduledTransfer
+  } catch (error) {
+    console.error("Error creating scheduled transfer:", error)
+    throw error
+  }
+}
+
+// Function to update a scheduled transfer
+export const updateScheduledTransfer = async (
+  projectId: string,
+  transferId: string,
+  updates: Partial<ScheduledTransfer>,
+): Promise<ScheduledTransfer> => {
+  try {
+    const projectRef = doc(db, "projects", projectId)
+    const projectSnap = await getDoc(projectRef)
+
+    if (!projectSnap.exists()) {
+      throw new Error("Project not found")
+    }
+
+    const projectData = projectSnap.data() as Project
+    const scheduledTransfers = projectData.scheduledTransfers || []
+
+    const updatedScheduledTransfers = scheduledTransfers.map((transfer) =>
+      transfer.id === transferId ? { ...transfer, ...updates } : transfer,
+    )
+
+    await updateDoc(projectRef, { scheduledTransfers: updatedScheduledTransfers })
+
+    return updatedScheduledTransfers.find((transfer) => transfer.id === transferId) as ScheduledTransfer
+  } catch (error) {
+    console.error("Error updating scheduled transfer:", error)
+    throw error
+  }
+}
+
+// Function to get all scheduled transfers
+export const getScheduledTransfers = async (): Promise<ScheduledTransfer[]> => {
+  try {
+    const transfers: ScheduledTransfer[] = []
+    const projectsSnapshot = await getDocs(projectsCollection)
+
+    for (const projectDoc of projectsSnapshot.docs) {
+      const projectData = projectDoc.data() as Project
+      if (projectData.scheduledTransfers && projectData.scheduledTransfers.length > 0) {
+        transfers.push(...projectData.scheduledTransfers)
+      }
+    }
+
+    return transfers
+  } catch (error) {
+    console.error("Error getting scheduled transfers:", error)
     throw error
   }
 }

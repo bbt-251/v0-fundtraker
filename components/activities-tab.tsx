@@ -129,30 +129,8 @@ export function ActivitiesTab({ projectId }: ActivitiesTabProps) {
     const activityTasks = tasks.filter((task) => task.activityId === activityId)
     if (activityTasks.length === 0) return 0
 
-    // Find the earliest start date and latest end date
-    let earliestStart: Date | null = null
-    let latestEnd: Date | null = null
-
-    activityTasks.forEach((task) => {
-      const startDate = new Date(task.startDate)
-      const endDate = new Date(task.endDate)
-
-      if (!earliestStart || startDate < earliestStart) {
-        earliestStart = startDate
-      }
-
-      if (!latestEnd || endDate > latestEnd) {
-        latestEnd = endDate
-      }
-    })
-
-    if (!earliestStart || !latestEnd) return 0
-
-    // Calculate days between
-    const diffTime = Math.abs(latestEnd.getTime() - earliestStart.getTime())
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-
-    return diffDays + 1 // Include both start and end days
+    // Sum up the duration of all tasks in this activity
+    return activityTasks.reduce((totalDuration, task) => totalDuration + task.duration, 0)
   }
 
   const formatCurrency = (amount: number) => {

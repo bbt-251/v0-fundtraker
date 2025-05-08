@@ -80,71 +80,54 @@ export function AppHeader() {
   )
 }
 
-// Helper function to get navigation items based on user role
+// Update the getNavItems function to match the sidebar navigation
 function getNavItems(role?: string) {
-  const baseItems = [
-    {
-      title: "Dashboard",
-      href: "/dashboard",
-      icon: "LayoutDashboard",
-    },
-    {
-      title: "Account",
-      href: "/account",
-      icon: "User",
-    },
-  ]
+  // Common route for all roles
+  const accountItem = {
+    title: "My Account",
+    href: "/my-account",
+    icon: "User",
+  }
 
   // Role-specific items
-  if (role === "Donor" || role === "Investor") {
+  if (role === "Donor") {
     return [
-      ...baseItems,
       {
-        title: "Browse Projects",
-        href: "/donor-dashboard",
-        icon: "Search",
+        title: "Dashboard",
+        href: "/dashboard",
+        icon: "LayoutDashboard",
       },
       {
-        title: "My Donations",
+        title: "Donated Projects",
         href: "/donated-projects",
         icon: "Heart",
       },
+      accountItem,
     ]
   } else if (role === "Project Owner") {
     return [
-      ...baseItems,
+      {
+        title: "Dashboard",
+        href: "/dashboard",
+        icon: "LayoutDashboard",
+      },
       {
         title: "Projects",
         href: "/projects",
         icon: "FolderKanban",
       },
-      {
-        title: "Funds",
-        href: "/funds",
-        icon: "Wallet",
-      },
-      {
-        title: "Disbursements",
-        href: "/disbursements",
-        icon: "DollarSign",
-      },
-      {
-        title: "Reports",
-        href: "/reports",
-        icon: "FileText",
-      },
+      accountItem,
     ]
   } else if (role === "Platform Governor") {
     return [
-      ...baseItems,
       {
-        title: "Project Approvals",
-        href: "/project-approvals",
-        icon: "CheckCircle",
+        title: "Dashboard",
+        href: "/dashboard",
+        icon: "LayoutDashboard",
       },
       {
-        title: "Projects",
-        href: "/projects",
+        title: "All Projects",
+        href: "/all-projects",
         icon: "FolderKanban",
       },
       {
@@ -152,35 +135,29 @@ function getNavItems(role?: string) {
         href: "/users",
         icon: "Users",
       },
-      {
-        title: "Reports",
-        href: "/reports",
-        icon: "BarChart3",
-      },
+      accountItem,
     ]
   } else if (role === "Fund Custodian") {
+    // No sidebar for Fund Custodian, but we still need header items
     return [
-      ...baseItems,
       {
         title: "Fund Management",
         href: "/fund-custodian",
         icon: "Wallet",
       },
-      {
-        title: "Disbursements",
-        href: "/disbursements",
-        icon: "FileText",
-      },
-      {
-        title: "Reports",
-        href: "/reports",
-        icon: "BarChart3",
-      },
+      accountItem,
     ]
   }
 
   // Default items if role is not recognized
-  return baseItems
+  return [
+    {
+      title: "Dashboard",
+      href: "/dashboard",
+      icon: "LayoutDashboard",
+    },
+    accountItem,
+  ]
 }
 
 // Helper function to get icon component

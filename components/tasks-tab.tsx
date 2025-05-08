@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Edit, Trash2, Plus, Loader2, ArrowRight } from "lucide-react"
+import { Edit, Trash2, Plus, Loader2, ArrowRight, MoreHorizontal } from "lucide-react"
 import {
   addProjectTask,
   updateProjectTask,
@@ -14,8 +14,10 @@ import {
 } from "@/services/project-service"
 import type { ProjectActivity, ProjectTask, HumanResource, MaterialResource } from "@/types/project"
 import { format } from "date-fns"
-import { DateRangePicker } from "@/components/ui/ant-date-picker"
+import { DateRangePicker, type MultiDateRange, type DateRange } from "@/components/ui/date-picker"
 import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover"
 
 interface TasksTabProps {
   projectId: string
@@ -33,17 +35,24 @@ export function TasksTab({ projectId }: TasksTabProps) {
   const [taskName, setTaskName] = useState("")
   const [taskDescription, setTaskDescription] = useState("")
   const [selectedActivityId, setSelectedActivityId] = useState("")
-  const [taskDateRange, setTaskDateRange] = useState<{ from?: Date; to?: Date } | undefined>()
+  const [taskDateRange, setTaskDateRange] = useState<DateRange | undefined>()
+  const [useMultipleTaskDates, setUseMultipleTaskDates] = useState(false)
+  const [taskMultiDateRange, setTaskMultiDateRange] = useState<MultiDateRange>({
+    ranges: [{ from: undefined, to: undefined }],
+  })
   const [isEditing, setIsEditing] = useState(false)
   const [currentTaskId, setCurrentTaskId] = useState<string | null>(null)
-  // Remove the dueDate state since we'll use taskDateRange instead
 
   // Resource assignment form state
   const [selectedTaskId, setSelectedTaskId] = useState("")
   const [selectedResourceType, setSelectedResourceType] = useState<"human" | "material">("human")
   const [selectedResourceId, setSelectedResourceId] = useState("")
   const [resourceQuantity, setResourceQuantity] = useState("1")
-  const [resourceDateRange, setResourceDateRange] = useState<{ from?: Date; to?: Date } | undefined>()
+  const [resourceDateRange, setResourceDateRange] = useState<DateRange | undefined>()
+  const [useMultipleResourceDates, setUseMultipleResourceDates] = useState(false)
+  const [resourceMultiDateRange, setResourceMultiDateRange] = useState<MultiDateRange>({
+    ranges: [{ from: undefined, to: undefined }],
+  })
 
   // Fetch project data when component mounts
   useEffect(() => {
@@ -131,18 +140,60 @@ export function TasksTab({ projectId }: TasksTabProps) {
       return
     }
 
-    if (!taskDateRange?.from || !taskDateRange?.to) {
-      setError("Start and end dates are required")
-      return
+    // Validate date ranges
+    if (useMultipleTaskDates) {
+      if (
+        !taskMultiDateRange ||
+        !taskMultiDateRange.ranges.length ||
+        !taskMultiDateRange.ranges.some((range) => range.from && range.to)
+      ) {
+        setError("At least one complete date range is required")
+        return
+      }
+    } else {
+      if (!taskDateRange?.from || !taskDateRange?.to) {
+        setError("Start and end dates are required")
+        return
+      }
     }
 
     try {
       setLoading(true)
       setError("")
 
-      const startDate = format(taskDateRange.from, "yyyy-MM-dd")
-      const endDate = format(taskDateRange.to, "yyyy-MM-dd")
-      const duration = calculateDuration(startDate, endDate)
+      let startDate: string
+      let endDate: string
+      let duration: number
+      let dateRanges: { startDate: string; endDate: string }[] | undefined
+
+      if (useMultipleTaskDates && taskMultiDateRange) {
+        // Process multiple date ranges
+        dateRanges = taskMultiDateRange.ranges
+          .filter((range) => range.from && range.to)
+          .map((range) => ({
+            startDate: format(range.from!, "yyyy-MM-dd"),
+            endDate: format(range.to!, "yyyy-MM-dd"),
+          }))
+
+        // Set overall start/end dates
+        const allDates = dateRanges.flatMap((range) => [new Date(range.startDate), new Date(range.endDate)])
+        const minDate = new Date(Math.min(...allDates.map((date) => date.getTime())))
+        const maxDate = new Date(Math.max(...allDates.map((date) => date.getTime())))
+
+        startDate = format(minDate, "yyyy-MM-dd")
+        endDate = format(maxDate, "yyyy-MM-dd")
+
+        // Calculate total duration (excluding weekends if necessary)
+        duration = dateRanges.reduce((total, range) => {
+          return total + calculateDuration(range.startDate, range.endDate)
+        }, 0)
+      } else {
+        // Single date range
+        startDate = format(taskDateRange!.from!, "yyyy-MM-dd")
+        endDate = format(taskDateRange!.to!, "yyyy-MM-dd")
+        duration = calculateDuration(startDate, endDate)
+        dateRanges = undefined
+      }
 
       if (isEditing && currentTaskId) {
         // Update existing task
@@ -153,6 +204,8 @@ export function TasksTab({ projectId }: TasksTabProps) {
           startDate,
           endDate,
           duration,
+          dateRanges,
+          multipleRanges: useMultipleTaskDates,
         })
 
         // Update local state
@@ -166,6 +219,8 @@ export function TasksTab({ projectId }: TasksTabProps) {
           startDate,
           endDate,
           duration,
+          dateRanges,
+          multipleRanges: useMultipleTaskDates,
         })
 
         // Update local state
@@ -177,6 +232,8 @@ export function TasksTab({ projectId }: TasksTabProps) {
       setTaskDescription("")
       setSelectedActivityId("")
       setTaskDateRange(undefined)
+      setTaskMultiDateRange({ ranges: [{ from: undefined, to: undefined }] })
+      setUseMultipleTaskDates(false)
       setIsEditing(false)
       setCurrentTaskId(null)
     } catch (error: any) {
@@ -190,10 +247,24 @@ export function TasksTab({ projectId }: TasksTabProps) {
     setTaskName(task.name)
     setTaskDescription(task.description)
     setSelectedActivityId(task.activityId)
-    setTaskDateRange({
-      from: new Date(task.startDate),
-      to: new Date(task.endDate),
-    })
+
+    if (task.multipleRanges && task.dateRanges && task.dateRanges.length > 0) {
+      setUseMultipleTaskDates(true)
+
+      const ranges = task.dateRanges.map((range) => ({
+        from: new Date(range.startDate),
+        to: new Date(range.endDate),
+      }))
+
+      setTaskMultiDateRange({ ranges })
+    } else {
+      setUseMultipleTaskDates(false)
+      setTaskDateRange({
+        from: new Date(task.startDate),
+        to: new Date(task.endDate),
+      })
+    }
+
     setIsEditing(true)
     setCurrentTaskId(task.id)
   }
@@ -222,9 +293,21 @@ export function TasksTab({ projectId }: TasksTabProps) {
       return
     }
 
-    if (!resourceDateRange?.from || !resourceDateRange?.to) {
-      setError("Start and end dates are required")
-      return
+    // Validate date ranges
+    if (useMultipleResourceDates) {
+      if (
+        !resourceMultiDateRange ||
+        !resourceMultiDateRange.ranges.length ||
+        !resourceMultiDateRange.ranges.some((range) => range.from && range.to)
+      ) {
+        setError("At least one complete date range is required")
+        return
+      }
+    } else {
+      if (!resourceDateRange?.from || !resourceDateRange?.to) {
+        setError("Start and end dates are required")
+        return
+      }
     }
 
     // Validate that resource dates are within task dates
@@ -236,14 +319,36 @@ export function TasksTab({ projectId }: TasksTabProps) {
       // Reset hours to ensure proper comparison
       taskStart.setHours(0, 0, 0, 0)
       taskEnd.setHours(0, 0, 0, 0)
-      const resourceStart = new Date(resourceDateRange.from)
-      const resourceEnd = new Date(resourceDateRange.to)
-      resourceStart.setHours(0, 0, 0, 0)
-      resourceEnd.setHours(0, 0, 0, 0)
 
-      if (resourceStart < taskStart || resourceEnd > taskEnd) {
-        setError("Resource dates must be within the task's date range")
-        return
+      if (useMultipleResourceDates) {
+        // Check all resource date ranges are within task dates
+        const allRangesValid = resourceMultiDateRange.ranges.every((range) => {
+          if (!range.from || !range.to) return true // Skip incomplete ranges
+
+          const resourceStart = new Date(range.from)
+          const resourceEnd = new Date(range.to)
+
+          resourceStart.setHours(0, 0, 0, 0)
+          resourceEnd.setHours(0, 0, 0, 0)
+
+          return resourceStart >= taskStart && resourceEnd <= taskEnd
+        })
+
+        if (!allRangesValid) {
+          setError("All resource date ranges must be within the task's date range")
+          return
+        }
+      } else {
+        const resourceStart = new Date(resourceDateRange!.from!)
+        const resourceEnd = new Date(resourceDateRange!.to!)
+
+        resourceStart.setHours(0, 0, 0, 0)
+        resourceEnd.setHours(0, 0, 0, 0)
+
+        if (resourceStart < taskStart || resourceEnd > taskEnd) {
+          setError("Resource dates must be within the task's date range")
+          return
+        }
       }
     }
 
@@ -251,28 +356,61 @@ export function TasksTab({ projectId }: TasksTabProps) {
       setLoading(true)
       setError("")
 
-      const resourceStartDate = resourceDateRange?.from ? format(resourceDateRange.from, "yyyy-MM-dd") : ""
-      const resourceEndDate = resourceDateRange?.to ? format(resourceDateRange.to, "yyyy-MM-dd") : ""
+      let startDate: string
+      let endDate: string
+      let duration: number
       const quantity = Number.parseInt(resourceQuantity, 10) || 1
-      const duration = calculateDuration(resourceStartDate, resourceEndDate)
-      const { dailyCost, totalCost } = calculateResourceCost(
-        selectedResourceType,
-        selectedResourceId,
-        quantity,
-        resourceStartDate,
-        resourceEndDate,
-      )
+      let dateRanges: { startDate: string; endDate: string }[] | undefined
+      let dailyCost: number
+      let totalCost: number
+
+      if (useMultipleResourceDates && resourceMultiDateRange) {
+        // Process multiple date ranges
+        dateRanges = resourceMultiDateRange.ranges
+          .filter((range) => range.from && range.to)
+          .map((range) => ({
+            startDate: format(range.from!, "yyyy-MM-dd"),
+            endDate: format(range.to!, "yyyy-MM-dd"),
+          }))
+
+        // Set overall start/end dates
+        const allDates = dateRanges.flatMap((range) => [new Date(range.startDate), new Date(range.endDate)])
+        const minDate = new Date(Math.min(...allDates.map((date) => date.getTime())))
+        const maxDate = new Date(Math.max(...allDates.map((date) => date.getTime())))
+
+        startDate = format(minDate, "yyyy-MM-dd")
+        endDate = format(maxDate, "yyyy-MM-dd")
+
+        // Calculate total duration across all ranges
+        duration = dateRanges.reduce((total, range) => {
+          return total + calculateDuration(range.startDate, range.endDate)
+        }, 0)
+      } else {
+        // Single date range
+        startDate = format(resourceDateRange!.from!, "yyyy-MM-dd")
+        endDate = format(resourceDateRange!.to!, "yyyy-MM-dd")
+        duration = calculateDuration(startDate, endDate)
+        dateRanges = undefined
+      }
+
+      // Calculate cost
+      const costCalc = calculateResourceCost(selectedResourceType, selectedResourceId, quantity, startDate, endDate)
+
+      dailyCost = costCalc.dailyCost
+      totalCost = useMultipleResourceDates ? duration * dailyCost * quantity : costCalc.totalCost
 
       // Add resource assignment
       const newAssignment = await addTaskResourceAssignment(projectId, selectedTaskId, {
         resourceId: selectedResourceId,
         resourceType: selectedResourceType,
         quantity,
-        startDate: resourceStartDate,
-        endDate: resourceEndDate,
+        startDate,
+        endDate,
         duration,
         dailyCost,
         totalCost,
+        dateRanges,
+        multipleRanges: useMultipleResourceDates,
       })
 
       // Update local state
@@ -292,6 +430,8 @@ export function TasksTab({ projectId }: TasksTabProps) {
       setSelectedResourceId("")
       setResourceQuantity("1")
       setResourceDateRange(undefined)
+      setResourceMultiDateRange({ ranges: [{ from: undefined, to: undefined }] })
+      setUseMultipleResourceDates(false)
     } catch (error: any) {
       setError(error.message || "Failed to assign resource")
     } finally {
@@ -394,14 +534,48 @@ export function TasksTab({ projectId }: TasksTabProps) {
     return false
   }
 
+  // Component for displaying multiple date ranges with a popover
+  const DateRangesPopover = ({ dateRanges }: { dateRanges: { startDate: string; endDate: string }[] }) => {
+    return (
+      <Popover>
+        <PopoverTrigger>
+          <button
+            className="flex items-center text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+            aria-label="View date ranges"
+            title="Click to view all date ranges"
+          >
+            <MoreHorizontal className="h-5 w-5" />
+          </button>
+        </PopoverTrigger>
+        <PopoverContent className="w-auto p-0" align="start" side="bottom">
+          <div className="p-4 max-w-sm">
+            <h4 className="font-medium mb-3 text-sm">Work Periods</h4>
+            <div className="space-y-3 max-h-60 overflow-y-auto">
+              {dateRanges.map((range, idx) => (
+                <div key={idx} className="flex items-center space-x-3 p-2 bg-gray-50 dark:bg-gray-800 rounded-md">
+                  <span className="bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300 w-6 h-6 rounded-full flex items-center justify-center text-xs flex-shrink-0">
+                    {idx + 1}
+                  </span>
+                  <div className="flex flex-col">
+                    <div className="font-medium text-sm">Period {idx + 1}</div>
+                    <div className="text-sm text-gray-600 dark:text-gray-300">
+                      {formatDate(range.startDate)} - {formatDate(range.endDate)}
+                    </div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      {calculateDuration(range.startDate, range.endDate)} days
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </PopoverContent>
+      </Popover>
+    )
+  }
+
   return (
     <div className="space-y-6">
-      {error && (
-        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
-          <p className="text-red-700 dark:text-red-300">{error}</p>
-        </div>
-      )}
-
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
         <h3 className="text-lg font-medium mb-4">Add New Task</h3>
         <div className="space-y-4">
@@ -453,19 +627,49 @@ export function TasksTab({ projectId }: TasksTabProps) {
             </select>
           </div>
           <div className="mb-4">
-            <Label htmlFor="taskDateRange" className="mb-2 block">
-              Task Date Range
-            </Label>
-            <DateRangePicker
-              dateRange={taskDateRange}
-              setDateRange={setTaskDateRange}
-              placeholder={["Start date", "End date"]}
-              className="w-full"
-            />
+            <div className="flex items-center justify-between mb-2">
+              <Label htmlFor="taskDateRange" className="block">
+                Task Date Range
+              </Label>
+              <div className="flex items-center space-x-2">
+                <span className="text-sm">Multiple Ranges</span>
+                <Switch
+                  checked={useMultipleTaskDates}
+                  onCheckedChange={setUseMultipleTaskDates}
+                  id="multiple-task-dates"
+                />
+              </div>
+            </div>
+
+            {useMultipleTaskDates ? (
+              <DateRangePicker
+                multiDateRange={taskMultiDateRange}
+                setMultiDateRange={setTaskMultiDateRange}
+                placeholder={["Start date", "End date"]}
+                className="w-full"
+                useMultiple={true}
+              />
+            ) : (
+              <DateRangePicker
+                dateRange={taskDateRange}
+                setDateRange={setTaskDateRange}
+                placeholder={["Start date", "End date"]}
+                className="w-full"
+              />
+            )}
           </div>
           <Button
             onClick={handleAddTask}
-            disabled={loading || !taskName.trim() || !selectedActivityId || !taskDateRange?.from || !taskDateRange?.to}
+            disabled={
+              loading ||
+              !taskName.trim() ||
+              !selectedActivityId ||
+              (!useMultipleTaskDates && (!taskDateRange?.from || !taskDateRange?.to)) ||
+              (useMultipleTaskDates &&
+                (!taskMultiDateRange ||
+                  !taskMultiDateRange.ranges.length ||
+                  !taskMultiDateRange.ranges.some((range) => range.from && range.to)))
+            }
             className="w-full bg-gradient-to-r from-blue-600 to-teal-600 hover:from-blue-700 hover:to-teal-700"
           >
             {loading ? (
@@ -578,52 +782,120 @@ export function TasksTab({ projectId }: TasksTabProps) {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Date Range</label>
-            <DateRangePicker
-              dateRange={resourceDateRange}
-              setDateRange={setResourceDateRange}
-              placeholder={["Start date", "End date"]}
-            />
-          </div>
-
-          {selectedTaskId && selectedResourceId && resourceDateRange?.from && resourceDateRange?.to && (
-            <div className="bg-gray-50 dark:bg-gray-700 p-4 rounded-md">
-              <h4 className="text-sm font-medium mb-2">Estimated Cost:</h4>
-              <div className="text-lg font-bold">
-                {formatCurrency(
-                  calculateResourceCost(
-                    selectedResourceType,
-                    selectedResourceId,
-                    Number.parseInt(resourceQuantity, 10) || 1,
-                    resourceDateRange?.from ? format(resourceDateRange.from, "yyyy-MM-dd") : "",
-                    resourceDateRange?.to ? format(resourceDateRange.to, "yyyy-MM-dd") : "",
-                  ).totalCost,
-                )}
-              </div>
-              <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                {formatCurrency(
-                  calculateResourceCost(
-                    selectedResourceType,
-                    selectedResourceId,
-                    Number.parseInt(resourceQuantity, 10) || 1,
-                    resourceDateRange?.from ? format(resourceDateRange.from, "yyyy-MM-dd") : "",
-                    resourceDateRange?.to ? format(resourceDateRange.to, "yyyy-MM-dd") : "",
-                  ).dailyCost,
-                )}{" "}
-                per day × {Number.parseInt(resourceQuantity, 10) || 1} ×{" "}
-                {calculateDuration(
-                  resourceDateRange?.from ? format(resourceDateRange.from, "yyyy-MM-dd") : "",
-                  resourceDateRange?.to ? format(resourceDateRange.to, "yyyy-MM-dd") : "",
-                )}{" "}
-                days
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Date Range</label>
+              <div className="flex items-center space-x-2">
+                <span className="text-sm">Multiple Ranges</span>
+                <Switch
+                  checked={useMultipleResourceDates}
+                  onCheckedChange={setUseMultipleResourceDates}
+                  id="multiple-resource-dates"
+                />
               </div>
             </div>
-          )}
+
+            {useMultipleResourceDates ? (
+              <DateRangePicker
+                multiDateRange={resourceMultiDateRange}
+                setMultiDateRange={setResourceMultiDateRange}
+                placeholder={["Start date", "End date"]}
+                useMultiple={true}
+              />
+            ) : (
+              <DateRangePicker
+                dateRange={resourceDateRange}
+                setDateRange={setResourceDateRange}
+                placeholder={["Start date", "End date"]}
+              />
+            )}
+          </div>
+
+          {selectedTaskId &&
+            selectedResourceId &&
+            ((useMultipleResourceDates && resourceMultiDateRange.ranges.some((r) => r.from && r.to)) ||
+              (!useMultipleResourceDates && resourceDateRange?.from && resourceDateRange?.to)) && (
+              <div className="bg-gray-50 dark:bg-gray-700 p-4 rounded-md">
+                <h4 className="text-sm font-medium mb-2">Estimated Cost:</h4>
+                {useMultipleResourceDates ? (
+                  <>
+                    <div className="text-lg font-bold">
+                      {formatCurrency(
+                        resourceMultiDateRange.ranges
+                          .filter((range) => range.from && range.to)
+                          .reduce((total, range) => {
+                            const startDate = format(range.from!, "yyyy-MM-dd")
+                            const endDate = format(range.to!, "yyyy-MM-dd")
+                            const duration = calculateDuration(startDate, endDate)
+                            const dailyCost = calculateResourceCost(
+                              selectedResourceType,
+                              selectedResourceId,
+                              Number.parseInt(resourceQuantity, 10) || 1,
+                              startDate,
+                              endDate,
+                            ).dailyCost
+                            return total + dailyCost * (Number.parseInt(resourceQuantity, 10) || 1) * duration
+                          }, 0),
+                      )}
+                    </div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      For {resourceMultiDateRange.ranges.filter((r) => r.from && r.to).length} work periods, total{" "}
+                      {resourceMultiDateRange.ranges
+                        .filter((range) => range.from && range.to)
+                        .reduce((total, range) => {
+                          return (
+                            total +
+                            calculateDuration(format(range.from!, "yyyy-MM-dd"), format(range.to!, "yyyy-MM-dd"))
+                          )
+                        }, 0)}{" "}
+                      working days
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="text-lg font-bold">
+                      {formatCurrency(
+                        calculateResourceCost(
+                          selectedResourceType,
+                          selectedResourceId,
+                          Number.parseInt(resourceQuantity, 10) || 1,
+                          resourceDateRange?.from ? format(resourceDateRange.from, "yyyy-MM-dd") : "",
+                          resourceDateRange?.to ? format(resourceDateRange.to, "yyyy-MM-dd") : "",
+                        ).totalCost,
+                      )}
+                    </div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      {formatCurrency(
+                        calculateResourceCost(
+                          selectedResourceType,
+                          selectedResourceId,
+                          Number.parseInt(resourceQuantity, 10) || 1,
+                          resourceDateRange?.from ? format(resourceDateRange.from, "yyyy-MM-dd") : "",
+                          resourceDateRange?.to ? format(resourceDateRange.to, "yyyy-MM-dd") : "",
+                        ).dailyCost,
+                      )}{" "}
+                      per day × {Number.parseInt(resourceQuantity, 10) || 1} ×{" "}
+                      {calculateDuration(
+                        resourceDateRange?.from ? format(resourceDateRange.from, "yyyy-MM-dd") : "",
+                        resourceDateRange?.to ? format(resourceDateRange.to, "yyyy-MM-dd") : "",
+                      )}{" "}
+                      days
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
 
           <Button
             onClick={handleAssignResource}
             disabled={
-              loading || !selectedTaskId || !selectedResourceId || !resourceDateRange?.from || !resourceDateRange?.to
+              loading ||
+              !selectedTaskId ||
+              !selectedResourceId ||
+              (!useMultipleResourceDates && (!resourceDateRange?.from || !resourceDateRange?.to)) ||
+              (useMultipleResourceDates &&
+                (!resourceMultiDateRange ||
+                  !resourceMultiDateRange.ranges.length ||
+                  !resourceMultiDateRange.ranges.some((range) => range.from && range.to)))
             }
             className="w-full"
           >
@@ -638,6 +910,12 @@ export function TasksTab({ projectId }: TasksTabProps) {
           </Button>
         </div>
       </div>
+
+      {error && (
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 mt-4">
+          <p className="text-red-700 dark:text-red-300">{error}</p>
+        </div>
+      )}
 
       {selectedTaskId && tasks.find((t) => t.id === selectedTaskId)?.resources.length > 0 && (
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow">
@@ -693,8 +971,20 @@ export function TasksTab({ projectId }: TasksTabProps) {
                               {getResourceName("human", resource.resourceId)}
                             </td>
                             <td className="px-4 py-4 whitespace-nowrap">{resource.quantity}</td>
-                            <td className="px-4 py-4 whitespace-nowrap">{formatDate(resource.startDate)}</td>
-                            <td className="px-4 py-4 whitespace-nowrap">{formatDate(resource.endDate)}</td>
+                            <td className="px-4 py-4">
+                              {resource.multipleRanges && resource.dateRanges && resource.dateRanges.length > 0 ? (
+                                <DateRangesPopover dateRanges={resource.dateRanges} />
+                              ) : (
+                                formatDate(resource.startDate)
+                              )}
+                            </td>
+                            <td className="px-4 py-4">
+                              {resource.multipleRanges && resource.dateRanges && resource.dateRanges.length > 0 ? (
+                                <span className="text-xs italic text-gray-500">See periods</span>
+                              ) : (
+                                formatDate(resource.endDate)
+                              )}
+                            </td>
                             <td className="px-4 py-4 whitespace-nowrap">{resource.duration} days</td>
                             <td className="px-4 py-4 whitespace-nowrap">{formatCurrency(resource.dailyCost)}</td>
                             <td className="px-4 py-4 whitespace-nowrap font-medium">
@@ -770,8 +1060,20 @@ export function TasksTab({ projectId }: TasksTabProps) {
                               {getResourceName("material", resource.resourceId)}
                             </td>
                             <td className="px-4 py-4 whitespace-nowrap">{resource.quantity}</td>
-                            <td className="px-4 py-4 whitespace-nowrap">{formatDate(resource.startDate)}</td>
-                            <td className="px-4 py-4 whitespace-nowrap">{formatDate(resource.endDate)}</td>
+                            <td className="px-4 py-4">
+                              {resource.multipleRanges && resource.dateRanges && resource.dateRanges.length > 0 ? (
+                                <DateRangesPopover dateRanges={resource.dateRanges} />
+                              ) : (
+                                formatDate(resource.startDate)
+                              )}
+                            </td>
+                            <td className="px-4 py-4">
+                              {resource.multipleRanges && resource.dateRanges && resource.dateRanges.length > 0 ? (
+                                <span className="text-xs italic text-gray-500">See periods</span>
+                              ) : (
+                                formatDate(resource.endDate)
+                              )}
+                            </td>
                             <td className="px-4 py-4 whitespace-nowrap">{resource.duration} days</td>
                             <td className="px-4 py-4 whitespace-nowrap">{formatCurrency(resource.dailyCost)}</td>
                             <td className="px-4 py-4 whitespace-nowrap font-medium">
@@ -859,9 +1161,27 @@ export function TasksTab({ projectId }: TasksTabProps) {
                       )}
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap">{getActivityName(task.activityId)}</td>
-                    <td className="px-4 py-4 whitespace-nowrap">{formatDate(task.startDate)}</td>
-                    <td className="px-4 py-4 whitespace-nowrap">{formatDate(task.endDate)}</td>
-                    <td className="px-4 py-4 whitespace-nowrap">{task.duration} days</td>
+                    <td className="px-4 py-4">
+                      {task.multipleRanges && task.dateRanges && task.dateRanges.length > 0 ? (
+                        <DateRangesPopover dateRanges={task.dateRanges} />
+                      ) : (
+                        formatDate(task.startDate)
+                      )}
+                    </td>
+                    <td className="px-4 py-4">
+                      {task.multipleRanges && task.dateRanges && task.dateRanges.length > 0 ? (
+                        <span className="text-xs italic text-gray-500">See periods</span>
+                      ) : (
+                        formatDate(task.endDate)
+                      )}
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap">
+                      {task.multipleRanges && task.dateRanges ? (
+                        <span>{task.duration} days</span>
+                      ) : (
+                        <span>{task.duration} days</span>
+                      )}
+                    </td>
                     <td className="px-4 py-4 whitespace-nowrap">
                       <div className="flex items-center">
                         <span className="bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300 px-2 py-1 rounded text-xs font-medium">

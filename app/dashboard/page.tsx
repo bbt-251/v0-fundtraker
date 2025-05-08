@@ -5,51 +5,39 @@ import { useRouter } from "next/navigation"
 import { useAuth } from "@/contexts/auth-context"
 import { LoadingAnimation } from "@/components/loading-animation"
 
+// Import the different dashboard components
+import ProjectOwnerDashboard from "@/components/dashboards/project-owner-dashboard"
+import PlatformGovernorDashboard from "@/components/dashboards/platform-governor-dashboard"
+import DonorDashboard from "@/app/donor-dashboard/page"
+
 export default function DashboardPage() {
   const { user, userProfile, loading } = useAuth()
   const router = useRouter()
 
   useEffect(() => {
-    if (!loading && userProfile) {
-      // Redirect based on user role
-      switch (userProfile.role) {
-        case "Donor":
-          router.push("/donor-dashboard")
-          break
-        case "Investor":
-          router.push("/donor-dashboard") // Investors use the same dashboard as donors for now
-          break
-        case "Project Owner":
-          router.push("/projects")
-          break
-        case "Project Manager":
-          router.push("/project-manager")
-          break
-        case "Platform Governor":
-          router.push("/projects")
-          break
-        case "Fund Custodian":
-          router.push("/fund-custodian")
-          break
-        default:
-          // Default dashboard for other roles
-          router.push("/projects")
-      }
+    // If user is a Fund Custodian, redirect to fund-custodian page
+    if (!loading && userProfile?.role === "Fund Custodian") {
+      router.push("/fund-custodian")
     }
-  }, [userProfile, loading, router])
+  }, [loading, userProfile, router])
 
-  if (loading || !userProfile) {
-    return (
-      <div className="flex h-screen items-center justify-center">
-        <LoadingAnimation />
-      </div>
-    )
+  if (loading) {
+    return <LoadingAnimation />
   }
 
-  return (
-    <div className="flex h-screen items-center justify-center">
-      <LoadingAnimation />
-      <p className="ml-4 text-lg">Redirecting to your dashboard...</p>
-    </div>
-  )
+  if (!user || !userProfile) {
+    return null // Will be redirected by auth context
+  }
+
+  // Render different dashboard based on user role
+  switch (userProfile.role) {
+    case "Project Owner":
+      return <ProjectOwnerDashboard />
+    case "Platform Governor":
+      return <PlatformGovernorDashboard />
+    case "Donor":
+      return <DonorDashboard />
+    default:
+      return <div>Unknown role</div>
+  }
 }

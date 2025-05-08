@@ -277,6 +277,33 @@ export async function getPendingVerifications(): Promise<UserProfile[]> {
   }
 }
 
+// New function to get all users
+export async function getAllUsers(): Promise<UserProfile[]> {
+  if (!isClient()) {
+    return []
+  }
+
+  const { db } = getFirebaseServices()
+  if (!db) {
+    return []
+  }
+
+  try {
+    const usersRef = collection(db, "users")
+    const querySnapshot = await getDocs(usersRef)
+
+    const allUsers: UserProfile[] = []
+    querySnapshot.forEach((doc) => {
+      allUsers.push(doc.data() as UserProfile)
+    })
+
+    return allUsers
+  } catch (error) {
+    console.error("Error getting all users:", error)
+    return []
+  }
+}
+
 // Save a project to user's saved projects
 export async function saveProject(uid: string, projectId: string): Promise<void> {
   if (!isClient()) {

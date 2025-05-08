@@ -6,7 +6,7 @@ import { useState, useEffect } from "react"
 import { useAuth } from "@/contexts/auth-context"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
-import { BarChart, FileQuestion, AlertTriangle, Loader2 } from "lucide-react"
+import { BarChart, Loader2, DollarSign, Users, Clock } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { toast } from "@/components/ui/use-toast"
 import { formatCurrency } from "@/lib/utils/currency-utils"
@@ -21,13 +21,13 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { submitFundReleaseRequest, getFundReleaseRequests } from "@/services/project-service"
-import type { Project, FundReleaseRequest, MilestoneBudget } from "@/types/project"
-import { collection, query, getDocs } from "firebase/firestore"
-import { db } from "@/lib/firebase/firebase-client"
+import { submitFundReleaseRequest, getFundReleaseRequests, getProjects } from "@/services/project-service"
+import type { Project, FundReleaseRequest } from "@/types/project"
+import type { MilestoneBudget } from "@/components/financial-resource-tab"
+import type { HumanResource, MaterialResource } from "@/types/project"
 
-export function ProjectManagerDashboard() {
-  const { userProfile } = useAuth()
+export default function ProjectOwnerDashboard() {
+  const { userProfile, user } = useAuth()
   const [greeting, setGreeting] = useState("Good day")
   const [loading, setLoading] = useState(true)
   const [projects, setProjects] = useState<Project[]>([])
@@ -38,10 +38,14 @@ export function ProjectManagerDashboard() {
   const [selectedMilestoneBudget, setSelectedMilestoneBudget] = useState<MilestoneBudget | null>(null)
   const [releaseDescription, setReleaseDescription] = useState("")
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [humanResources, setHumanResources] = useState<any[]>([])
-  const [materialResources, setMaterialResources] = useState<any[]>([])
-
-  const { user } = useAuth()
+  const [humanResources, setHumanResources] = useState<HumanResource[]>([])
+  const [materialResources, setMaterialResources] = useState<MaterialResource[]>([])
+  const [stats, setStats] = useState({
+    totalProjects: 0,
+    activeProjects: 0,
+    totalDonations: 0,
+    pendingApprovals: 0,
+  })
 
   useEffect(() => {
     const hour = new Date().getHours()
@@ -57,17 +61,22 @@ export function ProjectManagerDashboard() {
       try {
         setLoading(true)
 
-        // Fetch projects where the user is the project manager
-        const projectsRef = collection(db, "projects")
-        const q = query(projectsRef)
-        const querySnapshot = await getDocs(q)
-
-        const projectsData = querySnapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        })) as Project[]
+        // Fetch projects where the user is the owner
+        const projectsData = await getProjects(user.uid)
 
         setProjects(projectsData)
+
+        // Calculate dashboard stats
+        const activeProjects = projectsData.filter((p) => p.isInExecution).length
+        const totalDonations = projectsData.reduce((sum, p) => sum + (p.donations || 0), 0)
+        const pendingApprovals = projectsData.filter((p) => p.approvalStatus === "pending").length
+
+        setStats({
+          totalProjects: projectsData.length,
+          activeProjects,
+          totalDonations,
+          pendingApprovals,
+        })
 
         if (projectsData.length > 0) {
           setSelectedProject(projectsData[0])
@@ -84,7 +93,7 @@ export function ProjectManagerDashboard() {
               id: milestone.id,
               milestoneId: milestone.id,
               milestoneName: milestone.name,
-              amount: milestone.budget || 0,
+              budget: milestone.budget || 0,
               percentOfTotal: milestone.percentOfTotal || 0,
               status: "Pending",
               dueDate: milestone.date,
@@ -107,119 +116,13 @@ export function ProjectManagerDashboard() {
           description: "Failed to load projects. Please try again.",
           variant: "destructive",
         })
-
-        // For demo purposes, create mock data if fetching fails
-        createMockData()
       } finally {
         setLoading(false)
       }
     }
 
-    function createMockData() {
-      // Create mock project data for demonstration
-      const mockProject: Project = {
-        id: "demo-project-id",
-        name: "FundTracker Platform",
-        description: "A comprehensive platform for tracking and managing project funds",
-        ownerId: user?.uid || "user-123",
-        ownerName: userProfile?.displayName || "John Doe",
-        category: "Technology",
-        location: "Global",
-        budget: 210000,
-        timeline: "12 months",
-        objectives: ["Improve fund tracking", "Enhance transparency"],
-        beneficiaries: "Project managers and donors",
-        status: "approved",
-        announced: true,
-        createdAt: new Date(),
-        userId: user?.uid || "user-123",
-        projectManagerId: user?.uid || "user-123",
-        scope: "Full platform development",
-        documents: [],
-        humanResources: [],
-        materialResources: [],
-        fundAccounts: [],
-        activities: [],
-        tasks: [],
-        deliverables: [],
-        milestones: [
-          {
-            id: "milestone-1",
-            name: "Initial Research & Planning",
-            description: "Complete initial research and project planning phase",
-            date: "2025-05-05",
-            status: "Not Started",
-            createdAt: new Date().toISOString(),
-            budget: 40000,
-            percentOfTotal: 19,
-          },
-          {
-            id: "milestone-2",
-            name: "Design Phase",
-            description: "Complete UI/UX design and architecture",
-            date: "2025-06-15",
-            status: "Not Started",
-            createdAt: new Date().toISOString(),
-            budget: 4000,
-            percentOfTotal: 2,
-          },
-          {
-            id: "milestone-3",
-            name: "MVP Development",
-            description: "Develop minimum viable product",
-            date: "2025-08-30",
-            status: "Not Started",
-            createdAt: new Date().toISOString(),
-            budget: 5000,
-            percentOfTotal: 2,
-          },
-        ],
-        milestoneBudgets: [
-          {
-            id: "budget-1",
-            milestoneId: "milestone-1",
-            milestoneName: "Initial Research & Planning",
-            amount: 40000,
-            percentOfTotal: 19,
-            status: "Pending",
-            dueDate: "2025-05-05",
-            description: "Budget for research and planning phase",
-            createdAt: new Date().toISOString(),
-          },
-          {
-            id: "budget-2",
-            milestoneId: "milestone-2",
-            milestoneName: "Design Phase",
-            amount: 4000,
-            percentOfTotal: 2,
-            status: "Pending",
-            dueDate: "2025-06-15",
-            description: "Budget for design phase",
-            createdAt: new Date().toISOString(),
-          },
-          {
-            id: "budget-3",
-            milestoneId: "milestone-3",
-            milestoneName: "MVP Development",
-            amount: 5000,
-            percentOfTotal: 2,
-            status: "Pending",
-            dueDate: "2025-08-30",
-            description: "Budget for MVP development",
-            createdAt: new Date().toISOString(),
-          },
-        ],
-        fundReleaseRequests: [],
-      }
-
-      setProjects([mockProject])
-      setSelectedProject(mockProject)
-      setMilestoneBudgets(mockProject.milestoneBudgets || [])
-      setFundReleaseRequests([])
-    }
-
     fetchUserProjects()
-  }, [user?.uid, userProfile?.displayName])
+  }, [user?.uid])
 
   // Handle project selection change
   const handleProjectChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -241,7 +144,7 @@ export function ProjectManagerDashboard() {
           id: milestone.id,
           milestoneId: milestone.id,
           milestoneName: milestone.name,
-          amount: milestone.budget || 0,
+          budget: milestone.budget || 0,
           percentOfTotal: milestone.percentOfTotal || 0,
           status: "Pending",
           dueDate: milestone.date,
@@ -265,7 +168,7 @@ export function ProjectManagerDashboard() {
   }
 
   // Calculate total budget and percentage
-  const totalBudget = milestoneBudgets.reduce((sum, budget) => sum + (budget.amount || 0), 0)
+  const totalBudget = milestoneBudgets.reduce((sum, budget) => sum + (budget.budget || 0), 0)
   const totalPercentage = milestoneBudgets.reduce((sum, budget) => sum + (budget.percentOfTotal || 0), 0)
 
   // Sample data for Gantt chart
@@ -340,7 +243,7 @@ export function ProjectManagerDashboard() {
     return request ? request.status : null
   }
 
-   // Calculate total costs
+  // Calculate total costs
   const calculateHumanResourceCost = (resource: HumanResource) => {
     return resource.costPerDay * resource.quantity * 30 // Assuming 30 days as default
   }
@@ -388,9 +291,53 @@ export function ProjectManagerDashboard() {
         {/* Header */}
         <div>
           <h1 className="text-2xl font-bold tracking-tight">
-            {greeting}, {userProfile?.firstName || userProfile?.displayName || "Project Manager"}!
+            {greeting}, {userProfile?.firstName || userProfile?.displayName || "Project Owner"}!
           </h1>
-          <p className="text-muted-foreground">Track your work, activities, and projects in one place.</p>
+          <p className="text-muted-foreground">Track your projects, funds, and activities in one place.</p>
+        </div>
+
+        {/* Dashboard summary cards */}
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Projects</CardTitle>
+              <BarChart className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{stats.totalProjects}</div>
+              <p className="text-xs text-muted-foreground">{stats.activeProjects} active projects</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Donations</CardTitle>
+              <DollarSign className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{formatCurrency(stats.totalDonations)}</div>
+              <p className="text-xs text-muted-foreground">Across all projects</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Team Members</CardTitle>
+              <Users className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{humanResources.length}</div>
+              <p className="text-xs text-muted-foreground">Across all projects</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Pending Approvals</CardTitle>
+              <Clock className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{stats.pendingApprovals}</div>
+              <p className="text-xs text-muted-foreground">Projects awaiting approval</p>
+            </CardContent>
+          </Card>
         </div>
 
         {/* Project Selector */}
@@ -413,49 +360,7 @@ export function ProjectManagerDashboard() {
           </select>
         </div>
 
-        {/* Dashboard content */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Tasks Completed</CardTitle>
-              <BarChart className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">45/78</div>
-              <p className="text-xs text-muted-foreground">58% completion rate</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Queries</CardTitle>
-              <FileQuestion className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">12</div>
-              <p className="text-xs text-muted-foreground">5 pending responses</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Open Issues</CardTitle>
-              <BarChart className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">7</div>
-              <p className="text-xs text-muted-foreground">-3 from last week</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Active Risks</CardTitle>
-              <AlertTriangle className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">5</div>
-              <p className="text-xs text-muted-foreground">2 high priority</p>
-            </CardContent>
-          </Card>
-        </div>
+        {/* Project Timeline */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
           <Card className="col-span-4">
             <CardHeader>
@@ -549,6 +454,8 @@ export function ProjectManagerDashboard() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Activity Progress */}
         <Card className="mt-6">
           <CardHeader>
             <CardTitle>Activity Progress</CardTitle>
@@ -556,57 +463,31 @@ export function ProjectManagerDashboard() {
           </CardHeader>
           <CardContent>
             <div className="space-y-8">
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium">Research and Analysis</p>
-                  <span className="text-sm font-medium">75%</span>
+              {selectedProject?.activities?.slice(0, 4).map((activity, index) => (
+                <div key={index} className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium">{activity.name}</p>
+                    <span className="text-sm font-medium">{activity.progress || 0}%</span>
+                  </div>
+                  <Progress value={activity.progress || 0} className="h-2" />
+                  <div className="flex justify-between text-xs text-muted-foreground">
+                    <span>Due: {new Date(activity.endDate).toLocaleDateString()}</span>
+                    <span>{activity.assignedTo ? `Assigned to: ${activity.assignedTo}` : "Unassigned"}</span>
+                  </div>
                 </div>
-                <Progress value={75} className="h-2" />
-                <div className="flex justify-between text-xs text-muted-foreground">
-                  <span>Due: Mar 2, 2025</span>
-                  <span>3 team members assigned</span>
-                </div>
-              </div>
+              ))}
 
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium">Create User Journey</p>
-                  <span className="text-sm font-medium">40%</span>
+              {(!selectedProject?.activities || selectedProject.activities.length === 0) && (
+                <div className="text-center py-4 text-muted-foreground">
+                  No activities defined for this project yet.
                 </div>
-                <Progress value={40} className="h-2" />
-                <div className="flex justify-between text-xs text-muted-foreground">
-                  <span>Due: Mar 6, 2025</span>
-                  <span>2 team members assigned</span>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium">Define User Persona</p>
-                  <span className="text-sm font-medium">20%</span>
-                </div>
-                <Progress value={20} className="h-2" />
-                <div className="flex justify-between text-xs text-muted-foreground">
-                  <span>Due: Mar 12, 2025</span>
-                  <span>1 team member assigned</span>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium">UI Prototyping</p>
-                  <span className="text-sm font-medium">0%</span>
-                </div>
-                <Progress value={0} className="h-2" />
-                <div className="flex justify-between text-xs text-muted-foreground">
-                  <span>Due: Mar 18, 2025</span>
-                  <span>Not started</span>
-                </div>
-              </div>
+              )}
             </div>
           </CardContent>
         </Card>
       </div>
+
+      {/* Fund Release Workflow */}
       <Card className="mt-6">
         <CardHeader>
           <CardTitle>Fund Release Workflow {selectedProject ? `- ${selectedProject.name}` : ""}</CardTitle>
@@ -699,19 +580,19 @@ export function ProjectManagerDashboard() {
                     </tr>
                   )}
                   {milestoneBudgets.length > 0 && (
-                      <tr className="bg-gray-50 dark:bg-gray-800 font-medium">
-                        <td className="py-4 px-4 border-b border-gray-200 dark:border-gray-700">Total</td>
-                        <td className="py-4 px-4 border-b border-gray-200 dark:border-gray-700"></td>
-                        <td className="py-4 px-4 border-b border-gray-200 dark:border-gray-700">
-                          {formatCurrency(totalMilestoneBudget)}
-                        </td>
-                        <td className="py-4 px-4 border-b border-gray-200 dark:border-gray-700">
-                          {totalCost > 0 ? ((totalMilestoneBudget / totalCost) * 100).toFixed(0) : 0}%
-                        </td>
-                        <td className="py-4 px-4 border-b border-gray-200 dark:border-gray-700"></td>
-                        <td className="py-4 px-4 border-b border-gray-200 dark:border-gray-700"></td>
-                      </tr>
-                    )}
+                    <tr className="bg-gray-50 dark:bg-gray-800 font-medium">
+                      <td className="py-4 px-4 border-b border-gray-200 dark:border-gray-700">Total</td>
+                      <td className="py-4 px-4 border-b border-gray-200 dark:border-gray-700"></td>
+                      <td className="py-4 px-4 border-b border-gray-200 dark:border-gray-700">
+                        {formatCurrency(totalMilestoneBudget)}
+                      </td>
+                      <td className="py-4 px-4 border-b border-gray-200 dark:border-gray-700">
+                        {totalCost > 0 ? ((totalMilestoneBudget / totalCost) * 100).toFixed(0) : 0}%
+                      </td>
+                      <td className="py-4 px-4 border-b border-gray-200 dark:border-gray-700"></td>
+                      <td className="py-4 px-4 border-b border-gray-200 dark:border-gray-700"></td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>

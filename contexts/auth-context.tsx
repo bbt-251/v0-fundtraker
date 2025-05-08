@@ -166,10 +166,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // If user is authenticated and on auth pages, redirect to appropriate dashboard
         if (pathname === "/login" || pathname === "/signup" || pathname === "/") {
           // Redirect based on user role
-          if (userProfile?.role === "Donor") {
-            router.push("/donor-dashboard")
-          } else if (userProfile?.role === "Project Manager") {
-            router.push("/project-manager")
+          if (userProfile?.role === "Fund Custodian") {
+            router.push("/fund-custodian")
           } else {
             router.push("/dashboard")
           }
@@ -180,10 +178,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           pathname.startsWith("/dashboard") ||
           pathname.startsWith("/projects") ||
           pathname.startsWith("/account") ||
+          pathname.startsWith("/my-account") ||
           pathname.startsWith("/users") ||
           pathname.startsWith("/donor-dashboard") ||
           pathname.startsWith("/donated-projects") ||
-          pathname.startsWith("/project-manager")
+          pathname.startsWith("/fund-custodian") ||
+          pathname.startsWith("/all-projects")
         ) {
           router.push("/login")
         }
@@ -220,8 +220,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Redirect based on role
       if (role === "Donor") {
         router.push("/donor-dashboard")
-      } else if (role === "Project Manager") {
-        router.push("/project-manager")
       } else {
         router.push("/dashboard")
       }

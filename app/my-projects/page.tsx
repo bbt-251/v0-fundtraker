@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { PlusCircle, Filter } from "lucide-react"
 import { LoadingAnimation } from "@/components/loading-animation"
 
-export default function ProjectsPage() {
+export default function MyProjectsPage() {
   const [projects, setProjects] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const router = useRouter()
