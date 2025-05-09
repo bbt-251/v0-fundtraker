@@ -5,9 +5,13 @@ import type { DatePickerProps, RangePickerProps } from "antd/es/date-picker"
 import dayjs from "dayjs"
 import type { Dayjs } from "dayjs"
 import { cn } from "@/lib/utils"
+import { useEffect, useState } from "react"
 
 // Import antd styles
 import "antd/dist/reset.css"
+
+// Import our dayjs configuration
+import "@/lib/dayjs-config"
 
 interface CustomDatePickerProps {
   date?: Date | null
@@ -30,6 +34,12 @@ export function DatePicker({
 }: CustomDatePickerProps) {
   const { resolvedTheme } = useTheme()
   const isDark = resolvedTheme === "dark"
+  const [isClient, setIsClient] = useState(false)
+
+  // Only render the DatePicker on the client
+  useEffect(() => {
+    setIsClient(true)
+  }, [])
 
   const handleChange: DatePickerProps["onChange"] = (date: Dayjs | null) => {
     onDateChange(date ? date.toDate() : undefined)
@@ -37,6 +47,11 @@ export function DatePicker({
 
   // Ensure we're passing a valid dayjs object or null to the DatePicker
   const dayjsValue = date ? dayjs(date) : null
+
+  // Don't render the DatePicker on the server
+  if (!isClient) {
+    return <div className={cn("h-10 w-full rounded-md border", className)}></div>
+  }
 
   return (
     <ConfigProvider
@@ -111,6 +126,12 @@ export function DateRangePicker({
 }: CustomRangePickerProps) {
   const { resolvedTheme } = useTheme()
   const isDark = resolvedTheme === "dark"
+  const [isClient, setIsClient] = useState(false)
+
+  // Only render the RangePicker on the client
+  useEffect(() => {
+    setIsClient(true)
+  }, [])
 
   const handleChange: RangePickerProps["onChange"] = (dates) => {
     if (dates && dates[0] && dates[1]) {
@@ -127,6 +148,11 @@ export function DateRangePicker({
   const dayjsValues = dateRange
     ? [dateRange.from ? dayjs(dateRange.from) : null, dateRange.to ? dayjs(dateRange.to) : null]
     : null
+
+  // Don't render the RangePicker on the server
+  if (!isClient) {
+    return <div className={cn("h-10 w-full rounded-md border", className)}></div>
+  }
 
   return (
     <ConfigProvider
@@ -153,12 +179,11 @@ export function DateRangePicker({
             colorIconHover: isDark ? "#e2e8f0" : "#374151",
             colorTextDisabled: isDark ? "#475569" : "#cbd5e1",
             colorBgContainerDisabled: isDark ? "#0f172a" : "#f1f5f9",
-            // Add these new properties for better range visibility
             cellRangeBorderColor: "#3b82f6",
-            cellActiveWithRangeBg: isDark ? "#1e40af" : "#dbeafe", // Darker blue in dark mode, light blue in light mode
+            cellActiveWithRangeBg: isDark ? "#1e40af" : "#dbeafe",
             cellHoverWithRangeBg: isDark ? "#1e40af" : "#dbeafe",
             cellRangeHoverBg: isDark ? "#1e40af" : "#dbeafe",
-            cellRangeBg: isDark ? "#1e3a8a" : "#bfdbfe", // Even darker blue in dark mode, medium blue in light mode
+            cellRangeBg: isDark ? "#1e3a8a" : "#bfdbfe",
           },
         },
       }}

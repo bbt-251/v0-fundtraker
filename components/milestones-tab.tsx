@@ -25,7 +25,7 @@ import {
   deleteProjectMilestone,
 } from "@/services/project-service"
 import type { ProjectMilestone, ProjectDeliverable } from "@/types/project"
-import { DatePicker } from "@/components/ui/ant-date-picker"
+import { DatePickerWrapper as DatePicker } from "@/components/ui/date-picker-wrapper"
 import { cn } from "@/lib/utils"
 import { format } from "date-fns"
 

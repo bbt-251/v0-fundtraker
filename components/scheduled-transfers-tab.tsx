@@ -8,14 +8,11 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
-import { Calendar } from "@/components/ui/calendar"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { format } from "date-fns"
-import { CalendarIcon } from "lucide-react"
-import { cn } from "@/lib/utils"
 import { getScheduledTransfers, updateScheduledTransfer } from "@/services/project-service"
 import type { ScheduledTransfer } from "@/types/project"
 import { auth } from "@/lib/firebase/firebase"
+import { DatePickerWrapper as DatePicker } from "@/components/ui/date-picker-wrapper"
 
 export function ScheduledTransfersTab() {
   const [transfers, setTransfers] = useState<ScheduledTransfer[]>([])
@@ -55,11 +52,18 @@ export function ScheduledTransfersTab() {
     if (!selectedTransfer || !scheduledDate) return
 
     try {
-      const updatedTransfer = await updateScheduledTransfer(selectedTransfer.projectId, selectedTransfer.id, {
+      // Create update object without undefined values
+      const updateData: Partial<ScheduledTransfer> = {
         status: "Pending",
         scheduledDate: scheduledDate.toISOString(),
-        notes: notes || undefined,
-      })
+      }
+
+      // Only add notes if it's not empty
+      if (notes.trim() !== "") {
+        updateData.notes = notes
+      }
+
+      const updatedTransfer = await updateScheduledTransfer(selectedTransfer.projectId, selectedTransfer.id, updateData)
 
       setTransfers((prev) => prev.map((t) => (t.id === updatedTransfer.id ? updatedTransfer : t)))
 
@@ -143,7 +147,16 @@ export function ScheduledTransfersTab() {
       </CardHeader>
       <CardContent>
         {transfers.length === 0 ? (
-          <div className="text-center py-8 text-gray-500">No scheduled transfers found</div>
+          <div className="space-y-4 text-center py-8">
+            <p className="text-gray-500">No scheduled transfers found</p>
+            <p className="text-sm text-gray-400">
+              If you have approved fund release requests, they should appear here automatically. Try refreshing the page
+              or check if the fund release requests were properly approved.
+            </p>
+            <Button variant="outline" size="sm" onClick={fetchTransfers} className="mx-auto mt-2">
+              Refresh Transfers
+            </Button>
+          </div>
         ) : (
           <Table>
             <TableHeader>
@@ -199,24 +212,12 @@ export function ScheduledTransfersTab() {
             <div className="grid gap-4 py-4">
               <div className="grid gap-2">
                 <Label htmlFor="scheduledDate">Scheduled Date</Label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      id="scheduledDate"
-                      variant="outline"
-                      className={cn(
-                        "w-full justify-start text-left font-normal",
-                        !scheduledDate && "text-muted-foreground",
-                      )}
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {scheduledDate ? format(scheduledDate, "PPP") : <span>Pick a date</span>}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0">
-                    <Calendar mode="single" selected={scheduledDate} onSelect={setScheduledDate} initialFocus />
-                  </PopoverContent>
-                </Popover>
+                <DatePicker
+                  date={scheduledDate}
+                  onDateChange={(date) => setScheduledDate(date)}
+                  className="w-full"
+                  placeholder="Select date"
+                />
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="notes">Notes (Optional)</Label>

@@ -16,6 +16,9 @@ import {
   updateMilestoneBudget,
 } from "@/services/project-service"
 import { MilestoneBudgetModal } from "./milestone-budget-modal"
+import { db } from "@/lib/firebase/firebase-init"
+import { doc, getDoc, updateDoc } from "firebase/firestore"
+import { toast } from "@/components/ui/use-toast"
 
 interface FinancialResourceTabProps {
   projectId: string
@@ -46,6 +49,7 @@ export function FinancialResourceTab({ projectId, humanResources, materialResour
   const [isMilestoneBudgetModalOpen, setIsMilestoneBudgetModalOpen] = useState(false)
   const [currentMilestoneBudget, setCurrentMilestoneBudget] = useState<MilestoneBudget | undefined>(undefined)
   const [totalProjectCost, setTotalProjectCost] = useState(0)
+  const [defaultAccountId, setDefaultAccountId] = useState<string | null>(null)
 
   // Fetch fund accounts when component mounts
   useEffect(() => {
@@ -59,6 +63,11 @@ export function FinancialResourceTab({ projectId, humanResources, materialResour
         // Fetch project milestones
         const milestones = project.milestones || []
         setProjectMilestones(milestones)
+
+        // Check if project has a default fund account
+        if (project.defaultFundAccountId) {
+          setDefaultAccountId(project.defaultFundAccountId)
+        }
       } catch (error: any) {
         setError(error.message || "Failed to fetch fund accounts")
       } finally {
@@ -218,6 +227,40 @@ export function FinancialResourceTab({ projectId, humanResources, materialResour
       setError("")
     } catch (error: any) {
       setError(error.message || "Failed to delete fund account")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Handle setting an account as default
+  const handleSetDefaultAccount = async (id: string) => {
+    try {
+      setLoading(true)
+
+      // Get the project document
+      const projectRef = doc(db, "projects", projectId)
+      const projectSnap = await getDoc(projectRef)
+
+      if (!projectSnap.exists()) {
+        throw new Error("Project not found")
+      }
+
+      // Update the project document with the default account ID
+      await updateDoc(projectRef, { defaultFundAccountId: id })
+
+      // Update local state
+      setDefaultAccountId(id)
+
+      // Show success message
+      toast({
+        title: "Success",
+        description: "Default bank account set successfully.",
+        variant: "default",
+      })
+
+      setError("")
+    } catch (error: any) {
+      setError(error.message || "Failed to set default account")
     } finally {
       setLoading(false)
     }
@@ -601,6 +644,9 @@ export function FinancialResourceTab({ projectId, humanResources, materialResour
                     Status
                   </th>
                   <th className="py-3 px-4 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider border-b border-gray-200 dark:border-gray-700">
+                    Default
+                  </th>
+                  <th className="py-3 px-4 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider border-b border-gray-200 dark:border-gray-700">
                     Actions
                   </th>
                 </tr>
@@ -628,23 +674,30 @@ export function FinancialResourceTab({ projectId, humanResources, materialResour
                           {account.status}
                         </span>
                       </td>
+                      <td className="py-4 px-4 border-b border-gray-200 dark:border-gray-700 text-center">
+                        <input
+                          type="checkbox"
+                          checked={defaultAccountId === account.id}
+                          onChange={() => handleSetDefaultAccount(account.id)}
+                          disabled={account.status !== "Approved" || loading}
+                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                        />
+                      </td>
                       <td className="py-4 px-4 border-b border-gray-200 dark:border-gray-700">
-                        <div className="flex space-x-2">
-                          <button
-                            onClick={() => handleEditRequest(account.id)}
-                            className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
-                            disabled={loading}
-                          >
-                            <Edit className="h-4 w-4" />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteRequest(account.id)}
-                            className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300"
-                            disabled={loading}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </div>
+                        <button
+                          onClick={() => handleEditRequest(account.id)}
+                          className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+                          disabled={loading}
+                        >
+                          <Edit className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteRequest(account.id)}
+                          className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300"
+                          disabled={loading}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
                       </td>
                     </tr>
                   ))

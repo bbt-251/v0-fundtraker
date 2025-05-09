@@ -6,7 +6,7 @@ import { useState, useEffect } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { FileText, DollarSign, Users, Clock, BarChart4, Loader2, X } from "lucide-react"
+import { FileText, DollarSign, Users, Clock, BarChart4, Loader2, X, AlertCircle } from "lucide-react"
 import { useAuth } from "@/contexts/auth-context"
 import {
   AreaChart,
@@ -28,6 +28,7 @@ import ProjectFundStatus from "@/components/project-fund-status"
 import RecentDonations from "@/components/recent-donations"
 import { AppHeader } from "@/components/app-header"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 
 // Import the new component
 import { ScheduledTransfersTab } from "@/components/scheduled-transfers-tab"
@@ -134,6 +135,8 @@ interface Project {
   milestones: Milestone[]
   milestoneBudgets: MilestoneBudget[]
   fundReleaseRequests?: FundReleaseRequest[]
+  scheduledTransfers?: any[]
+  defaultFundAccountId?: string
 }
 
 interface Milestone {
@@ -213,6 +216,10 @@ export default function FundCustodianDashboard() {
   // Add these new state variables after other state declarations
   const [selectedMilestone, setSelectedMilestone] = useState<any>(null)
   const [isMilestoneDetailsOpen, setIsMilestoneDetailsOpen] = useState(false)
+
+  // Add state for error alert
+  const [showNoDefaultAccountAlert, setShowNoDefaultAccountAlert] = useState(false)
+  const [currentRequestId, setCurrentRequestId] = useState<string | null>(null)
 
   // Add this helper function before the useEffect
   const getStatusColor = (status: string) => {
@@ -635,7 +642,7 @@ export default function FundCustodianDashboard() {
     }
   }
 
-  // Update the handleFundReleaseRequestUpdate function to create a scheduled transfer when a request is approved
+  // Update the handleFundReleaseRequestUpdate function to check for default account
   const handleFundReleaseRequestUpdate = async (
     requestId: string,
     projectId: string,
@@ -646,6 +653,9 @@ export default function FundCustodianDashboard() {
       // Set the loading state for this specific action
       setActionLoading({ requestId, action })
 
+      // Store the current request ID for the alert if needed
+      setCurrentRequestId(requestId)
+
       // Get the project document
       const projectRef = doc(db, "projects", projectId)
       const projectSnap = await getDoc(projectRef)
@@ -655,6 +665,28 @@ export default function FundCustodianDashboard() {
       }
 
       const projectData = projectSnap.data()
+
+      // If approving, check if there's a default fund account
+      if (newStatus === "Approved") {
+        if (!projectData.defaultFundAccountId) {
+          // No default account found, show alert and stop the process
+          setShowNoDefaultAccountAlert(true)
+          setActionLoading(null)
+          return
+        }
+
+        // Find the default fund account
+        const defaultAccount = projectData.fundAccounts?.find(
+          (account: any) => account.id === projectData.defaultFundAccountId,
+        )
+
+        if (!defaultAccount || defaultAccount.status !== "Approved") {
+          // Default account not found or not approved
+          setShowNoDefaultAccountAlert(true)
+          setActionLoading(null)
+          return
+        }
+      }
 
       // Update the fund release request status
       if (projectData.fundReleaseRequests && Array.isArray(projectData.fundReleaseRequests)) {
@@ -694,24 +726,31 @@ export default function FundCustodianDashboard() {
           }),
         )
 
-        // If the request was approved, create a scheduled transfer
+        // If the request was approved, create a scheduled transfer using the default account
         if (newStatus === "Approved") {
           // Find the request
           const request = projectData.fundReleaseRequests.find((r: any) => r.id === requestId)
 
           if (request) {
-            // Find a suitable fund account (for demo purposes, just use the first one)
-            const fundAccount =
-              projectData.fundAccounts && projectData.fundAccounts.length > 0 ? projectData.fundAccounts[0] : null
+            // Use the default fund account
+            const defaultAccount = projectData.fundAccounts.find((a: any) => a.id === projectData.defaultFundAccountId)
 
-            if (fundAccount) {
+            if (defaultAccount) {
               try {
-                await createScheduledTransfer(projectId, requestId, fundAccount.id)
-                toast({
-                  title: "Success",
-                  description: "Scheduled transfer created successfully.",
-                  variant: "default",
-                })
+                const transferCreated = await createScheduledTransfer(projectId, requestId, defaultAccount.id)
+                if (transferCreated) {
+                  toast({
+                    title: "Success",
+                    description: "Scheduled transfer created successfully.",
+                    variant: "default",
+                  })
+                } else {
+                  toast({
+                    title: "Warning",
+                    description: "Fund release request approved but failed to create scheduled transfer.",
+                    variant: "destructive",
+                  })
+                }
               } catch (error) {
                 console.error("Error creating scheduled transfer:", error)
                 toast({
@@ -720,12 +759,6 @@ export default function FundCustodianDashboard() {
                   variant: "destructive",
                 })
               }
-            } else {
-              toast({
-                title: "Warning",
-                description: "Fund release request approved but no fund account found to create scheduled transfer.",
-                variant: "destructive",
-              })
             }
           }
         }
@@ -976,17 +1009,85 @@ export default function FundCustodianDashboard() {
     }
   }
 
-  // Dummy function to simulate creating a scheduled transfer
+  // Function to create a scheduled transfer in the database
   const createScheduledTransfer = async (projectId: string, fundReleaseRequestId: string, fundAccountId: string) => {
-    // Simulate an API call or database operation
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        console.log(
-          `Scheduled transfer created for project ${projectId}, fund release request ${fundReleaseRequestId}, using fund account ${fundAccountId}`,
-        )
-        resolve(true)
-      }, 1000)
-    })
+    try {
+      // Find the request in our local state
+      const request = fundReleaseRequests.find((r) => r.id === fundReleaseRequestId)
+
+      if (!request) {
+        console.error("Could not find request to create transfer")
+        return false
+      }
+
+      // Get the project document
+      const projectRef = doc(db, "projects", projectId)
+      const projectSnap = await getDoc(projectRef)
+
+      if (!projectSnap.exists()) {
+        throw new Error("Project not found")
+      }
+
+      const projectData = projectSnap.data()
+
+      // Find the fund account
+      const fundAccount = projectData.fundAccounts?.find((a: any) => a.id === fundAccountId)
+
+      if (!fundAccount) {
+        throw new Error("Fund account not found")
+      }
+
+      // Create a new transfer object with default values for any potentially undefined fields
+      const newTransfer = {
+        id: `transfer-${Date.now()}`,
+        projectId: projectId || "",
+        projectName: request.projectName || "Unknown Project",
+        milestoneId: request.milestoneId || "",
+        milestoneName: request.milestoneName || "Unknown Milestone",
+        fundReleaseRequestId: fundReleaseRequestId || "",
+        recipientId: fundAccountId || "",
+        recipientName: fundAccount.accountOwnerName || "Unknown Recipient",
+        accountName: fundAccount.accountName || "Unknown Account",
+        accountNumber: fundAccount.accountNumber || "Unknown",
+        bankName: fundAccount.bankName || "Unknown Bank",
+        amount: request.amount || 0,
+        status: "To be Transferred",
+        requestedBy: request.requestedBy || "unknown",
+        requestedByName: request.requestedByName || "Project Manager",
+        requestDate: request.requestDate || new Date().toISOString(),
+        scheduledDate: null, // Set to null instead of a default date
+        approvedBy: userProfile?.uid || "unknown",
+        approvedByName: userProfile?.displayName || "Fund Custodian",
+      }
+
+      // Log the transfer object for debugging
+      console.log("Creating scheduled transfer:", JSON.stringify(newTransfer))
+
+      // Initialize scheduledTransfers array if it doesn't exist
+      const scheduledTransfers = Array.isArray(projectData.scheduledTransfers)
+        ? [...projectData.scheduledTransfers]
+        : []
+
+      // Add the transfer to the project's scheduledTransfers array
+      scheduledTransfers.push(newTransfer)
+
+      // Update the project document with only the scheduledTransfers field
+      await updateDoc(projectRef, {
+        scheduledTransfers: scheduledTransfers,
+      })
+
+      console.log("Scheduled transfer created successfully")
+      return true
+    } catch (error) {
+      console.error("Error creating scheduled transfer:", error)
+      return false
+    }
+  }
+
+  // Function to dismiss the no default account alert
+  const dismissNoDefaultAccountAlert = () => {
+    setShowNoDefaultAccountAlert(false)
+    setCurrentRequestId(null)
   }
 
   return (
@@ -997,6 +1098,21 @@ export default function FundCustodianDashboard() {
       {/* Main Content */}
       <div className="container mx-auto px-4 py-6">
         <h1 className="text-2xl font-bold mb-6">Fund Custodian Dashboard</h1>
+
+        {/* No Default Account Alert */}
+        {showNoDefaultAccountAlert && (
+          <Alert variant="destructive" className="mb-4">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>Default Account Required</AlertTitle>
+            <AlertDescription>
+              This project does not have a default bank account set. Please ask the project manager to set a default
+              account before approving fund release requests.
+            </AlertDescription>
+            <Button variant="outline" size="sm" className="mt-2" onClick={dismissNoDefaultAccountAlert}>
+              Dismiss
+            </Button>
+          </Alert>
+        )}
 
         <Card className="mb-6 border-0 shadow-sm">
           <CardContent className="p-0">

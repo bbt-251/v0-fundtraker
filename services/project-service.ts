@@ -616,16 +616,24 @@ export const addProjectTask = async (
       const projectData = projectSnap.data() as Project
       const tasks = projectData.tasks || []
 
+      // Ensure required fields have default values
       const newTask = {
         id: taskId,
         resources: [],
+        status: task.status || "Not Started",
+        priority: task.priority || "Medium",
         ...task,
       }
 
-      const updatedTasks = [...tasks, newTask]
+      // Filter out any undefined values
+      const filteredTask = Object.fromEntries(
+        Object.entries(newTask).filter(([_, value]) => value !== undefined),
+      ) as ProjectTask
+
+      const updatedTasks = [...tasks, filteredTask]
 
       await updateDoc(projectRef, { tasks: updatedTasks })
-      return newTask
+      return filteredTask
     } else {
       throw new Error("Project not found")
     }
@@ -649,7 +657,10 @@ export const updateProjectTask = async (
       const projectData = projectSnap.data() as Project
       const tasks = projectData.tasks || []
 
-      const updatedTasks = tasks.map((task) => (task.id === taskId ? { ...task, ...updates } : task))
+      // Filter out any undefined values from the updates object
+      const filteredUpdates = Object.fromEntries(Object.entries(updates).filter(([_, value]) => value !== undefined))
+
+      const updatedTasks = tasks.map((task) => (task.id === taskId ? { ...task, ...filteredUpdates } : task))
 
       await updateDoc(projectRef, { tasks: updatedTasks })
       return updatedTasks.find((task) => task.id === taskId) as ProjectTask

@@ -3,7 +3,19 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Edit, Trash2, Plus, Loader2, ArrowRight, MoreHorizontal } from "lucide-react"
+import {
+  Edit,
+  Trash2,
+  Plus,
+  Loader2,
+  ArrowRight,
+  MoreHorizontal,
+  Clock,
+  CheckCircle,
+  Play,
+  Ban,
+  DollarSign,
+} from "lucide-react"
 import {
   addProjectTask,
   updateProjectTask,
@@ -14,10 +26,23 @@ import {
 } from "@/services/project-service"
 import type { ProjectActivity, ProjectTask, HumanResource, MaterialResource } from "@/types/project"
 import { format } from "date-fns"
-import { DateRangePicker, type MultiDateRange, type DateRange } from "@/components/ui/date-picker"
+import { DateRangePickerWrapper as DateRangePicker } from "@/components/ui/date-picker-wrapper"
+import type { MultiDateRange, DateRange } from "@/components/ui/date-picker"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription,
+} from "@/components/ui/dialog"
+import { Badge } from "@/components/ui/badge"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import { Textarea } from "@/components/ui/textarea"
+import { Input } from "@/components/ui/input"
 
 interface TasksTabProps {
   projectId: string
@@ -42,6 +67,7 @@ export function TasksTab({ projectId }: TasksTabProps) {
   })
   const [isEditing, setIsEditing] = useState(false)
   const [currentTaskId, setCurrentTaskId] = useState<string | null>(null)
+  const [taskPriority, setTaskPriority] = useState<"Low" | "Medium" | "High">("Medium")
 
   // Resource assignment form state
   const [selectedTaskId, setSelectedTaskId] = useState("")
@@ -53,6 +79,18 @@ export function TasksTab({ projectId }: TasksTabProps) {
   const [resourceMultiDateRange, setResourceMultiDateRange] = useState<MultiDateRange>({
     ranges: [{ from: undefined, to: undefined }],
   })
+
+  // Status change modal state
+  const [statusModalOpen, setStatusModalOpen] = useState(false)
+  const [statusChangeType, setStatusChangeType] = useState<"block" | "postpone" | null>(null)
+  const [statusReason, setStatusReason] = useState("")
+  const [taskToChangeStatus, setTaskToChangeStatus] = useState<string | null>(null)
+
+  // Budget completion modal state
+  const [budgetModalOpen, setBudgetModalOpen] = useState(false)
+  const [taskToComplete, setTaskToComplete] = useState<string | null>(null)
+  const [actualBudget, setActualBudget] = useState("")
+  const [estimatedBudget, setEstimatedBudget] = useState(0)
 
   // Fetch project data when component mounts
   useEffect(() => {
@@ -206,6 +244,9 @@ export function TasksTab({ projectId }: TasksTabProps) {
           duration,
           dateRanges,
           multipleRanges: useMultipleTaskDates,
+          priority: taskPriority || "Medium", // Ensure priority is never undefined
+          // Only include status if it's being explicitly changed
+          status: "Not Started",
         })
 
         // Update local state
@@ -221,6 +262,8 @@ export function TasksTab({ projectId }: TasksTabProps) {
           duration,
           dateRanges,
           multipleRanges: useMultipleTaskDates,
+          status: "Not Started", // Default status
+          priority: taskPriority || "Medium", // Default priority
         })
 
         // Update local state
@@ -236,6 +279,7 @@ export function TasksTab({ projectId }: TasksTabProps) {
       setUseMultipleTaskDates(false)
       setIsEditing(false)
       setCurrentTaskId(null)
+      setTaskPriority("Medium")
     } catch (error: any) {
       setError(error.message || "Failed to save task")
     } finally {
@@ -247,6 +291,7 @@ export function TasksTab({ projectId }: TasksTabProps) {
     setTaskName(task.name)
     setTaskDescription(task.description)
     setSelectedActivityId(task.activityId)
+    setTaskPriority(task.priority || "Medium")
 
     if (task.multipleRanges && task.dateRanges && task.dateRanges.length > 0) {
       setUseMultipleTaskDates(true)
@@ -464,6 +509,104 @@ export function TasksTab({ projectId }: TasksTabProps) {
     }
   }
 
+  // Handle task completion with budget
+  const openBudgetModal = (taskId: string) => {
+    const task = tasks.find((t) => t.id === taskId)
+    if (task) {
+      const estimatedBudget = calculateTaskTotalCost(task)
+      setTaskToComplete(taskId)
+      setEstimatedBudget(estimatedBudget)
+      setActualBudget(estimatedBudget.toString()) // Default to estimated budget
+      setBudgetModalOpen(true)
+    }
+  }
+
+  const handleBudgetConfirm = async () => {
+    if (!taskToComplete) return
+
+    try {
+      setLoading(true)
+
+      // Parse the actual budget as a number
+      const actualBudgetValue = Number.parseFloat(actualBudget)
+
+      if (isNaN(actualBudgetValue)) {
+        setError("Please enter a valid budget amount")
+        return
+      }
+
+      // Update the task with the actual budget and completed status
+      const updatedTask = await updateProjectTask(projectId, taskToComplete, {
+        status: "Completed",
+        actualBudget: actualBudgetValue,
+      })
+
+      // Update local state
+      setTasks(tasks.map((task) => (task.id === taskToComplete ? updatedTask : task)))
+      setError("")
+
+      // Close modal and reset state
+      setBudgetModalOpen(false)
+      setTaskToComplete(null)
+      setActualBudget("")
+    } catch (error: any) {
+      setError(error.message || "Failed to complete task")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Fix the handleChangeTaskStatus function to ensure we're not passing undefined values
+  const handleChangeTaskStatus = async (taskId: string, newStatus: ProjectTask["status"], reason?: string) => {
+    // If the new status is "Completed", open the budget modal instead of updating directly
+    if (newStatus === "Completed") {
+      openBudgetModal(taskId)
+      return
+    }
+
+    try {
+      setLoading(true)
+
+      // Create an updates object with only defined values
+      const updates: Partial<ProjectTask> = { status: newStatus }
+
+      // Only add statusReason if it's defined and not empty
+      if (reason !== undefined && reason.trim() !== "") {
+        updates.statusReason = reason
+      }
+
+      const updatedTask = await updateProjectTask(projectId, taskId, updates)
+
+      // Update local state
+      setTasks(tasks.map((task) => (task.id === taskId ? updatedTask : task)))
+      setError("")
+    } catch (error: any) {
+      setError(error.message || "Failed to update task status")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const openStatusChangeModal = (taskId: string, type: "block" | "postpone") => {
+    setTaskToChangeStatus(taskId)
+    setStatusChangeType(type)
+    setStatusReason("")
+    setStatusModalOpen(true)
+  }
+
+  const handleStatusChangeConfirm = () => {
+    if (!taskToChangeStatus) return
+
+    const newStatus = statusChangeType === "block" ? "Blocked" : "Postponed"
+    handleChangeTaskStatus(taskToChangeStatus, newStatus, statusReason)
+
+    // Close modal and reset state
+    setStatusModalOpen(false)
+    setTaskToChangeStatus(null)
+    setStatusChangeType(null)
+    setStatusReason("")
+  }
+
   const getActivityName = (activityId: string) => {
     const activity = activities.find((a) => a.id === activityId)
     return activity ? activity.name : "Unknown Activity"
@@ -574,6 +717,38 @@ export function TasksTab({ projectId }: TasksTabProps) {
     )
   }
 
+  // Get status badge color based on status
+  const getStatusBadgeColor = (status: ProjectTask["status"]) => {
+    switch (status) {
+      case "Not Started":
+        return "bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-300"
+      case "In Progress":
+        return "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300"
+      case "Completed":
+        return "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300"
+      case "Blocked":
+        return "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300"
+      case "Postponed":
+        return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300"
+      default:
+        return "bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-300"
+    }
+  }
+
+  // Get priority badge color based on priority
+  const getPriorityBadgeColor = (priority: ProjectTask["priority"]) => {
+    switch (priority) {
+      case "Low":
+        return "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300"
+      case "Medium":
+        return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300"
+      case "High":
+        return "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300"
+      default:
+        return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300"
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
@@ -625,6 +800,38 @@ export function TasksTab({ projectId }: TasksTabProps) {
                 </option>
               ))}
             </select>
+          </div>
+          <div>
+            <label htmlFor="priority" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Priority
+            </label>
+            <RadioGroup
+              value={taskPriority}
+              onValueChange={(value) => setTaskPriority(value as "Low" | "Medium" | "High")}
+              className="flex space-x-4"
+            >
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="Low" id="priority-low" />
+                <Label htmlFor="priority-low" className="flex items-center">
+                  <span className="h-2 w-2 rounded-full bg-green-500 mr-2"></span>
+                  Low
+                </Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="Medium" id="priority-medium" />
+                <Label htmlFor="priority-medium" className="flex items-center">
+                  <span className="h-2 w-2 rounded-full bg-yellow-500 mr-2"></span>
+                  Medium
+                </Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="High" id="priority-high" />
+                <Label htmlFor="priority-high" className="flex items-center">
+                  <span className="h-2 w-2 rounded-full bg-red-500 mr-2"></span>
+                  High
+                </Label>
+              </div>
+            </RadioGroup>
           </div>
           <div className="mb-4">
             <div className="flex items-center justify-between mb-2">
@@ -1129,6 +1336,12 @@ export function TasksTab({ projectId }: TasksTabProps) {
                     Activity
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Status
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Priority
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                     Start Date
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
@@ -1141,7 +1354,7 @@ export function TasksTab({ projectId }: TasksTabProps) {
                     Resources
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    Cost
+                    Budget
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                     Actions
@@ -1159,8 +1372,23 @@ export function TasksTab({ projectId }: TasksTabProps) {
                       {task.description && (
                         <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">{task.description}</div>
                       )}
+                      {task.statusReason && (
+                        <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 italic">
+                          Reason: {task.statusReason}
+                        </div>
+                      )}
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap">{getActivityName(task.activityId)}</td>
+                    <td className="px-4 py-4 whitespace-nowrap">
+                      <Badge className={getStatusBadgeColor(task.status || "Not Started")}>
+                        {task.status || "Not Started"}
+                      </Badge>
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap">
+                      <Badge className={getPriorityBadgeColor(task.priority || "Medium")}>
+                        {task.priority || "Medium"}
+                      </Badge>
+                    </td>
                     <td className="px-4 py-4">
                       {task.multipleRanges && task.dateRanges && task.dateRanges.length > 0 ? (
                         <DateRangesPopover dateRanges={task.dateRanges} />
@@ -1194,24 +1422,124 @@ export function TasksTab({ projectId }: TasksTabProps) {
                       </div>
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap font-medium">
-                      {formatCurrency(calculateTaskTotalCost(task))}
+                      {task.status === "Completed" && task.actualBudget !== undefined ? (
+                        <div>
+                          <div
+                            className={
+                              task.actualBudget > calculateTaskTotalCost(task) ? "text-red-600" : "text-green-600"
+                            }
+                          >
+                            {formatCurrency(task.actualBudget)}
+                          </div>
+                          <div className="text-xs text-gray-500 mt-1">
+                            Est: {formatCurrency(calculateTaskTotalCost(task))}
+                          </div>
+                          <div className="text-xs mt-1">
+                            {task.actualBudget > calculateTaskTotalCost(task) ? (
+                              <span className="text-red-600">
+                                +{formatCurrency(task.actualBudget - calculateTaskTotalCost(task))}
+                              </span>
+                            ) : (
+                              <span className="text-green-600">
+                                -{formatCurrency(calculateTaskTotalCost(task) - task.actualBudget)}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        formatCurrency(calculateTaskTotalCost(task))
+                      )}
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap">
-                      <div className="flex space-x-2">
-                        <button
-                          onClick={() => handleEditTask(task)}
-                          className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
-                          disabled={loading}
-                        >
-                          <Edit className="h-4 w-4" />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteTask(task.id)}
-                          className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300"
-                          disabled={loading}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+                      <div className="flex flex-col space-y-2">
+                        <div className="flex space-x-2">
+                          <button
+                            onClick={() => handleEditTask(task)}
+                            className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+                            disabled={loading}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteTask(task.id)}
+                            className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300"
+                            disabled={loading}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+
+                        {/* Status action buttons */}
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {task.status === "Not Started" && (
+                            <>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 px-2 text-xs"
+                                onClick={() => handleChangeTaskStatus(task.id, "In Progress")}
+                              >
+                                <Play className="h-3 w-3 mr-1" /> Start
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 px-2 text-xs text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
+                                onClick={() => openStatusChangeModal(task.id, "block")}
+                              >
+                                <Ban className="h-3 w-3 mr-1" /> Block
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 px-2 text-xs text-yellow-600 border-yellow-200 hover:bg-yellow-50 hover:text-yellow-700"
+                                onClick={() => openStatusChangeModal(task.id, "postpone")}
+                              >
+                                <Clock className="h-3 w-3 mr-1" /> Postpone
+                              </Button>
+                            </>
+                          )}
+
+                          {task.status === "In Progress" && (
+                            <>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 px-2 text-xs text-green-600 border-green-200 hover:bg-green-50 hover:text-green-700"
+                                onClick={() => handleChangeTaskStatus(task.id, "Completed")}
+                              >
+                                <CheckCircle className="h-3 w-3 mr-1" /> Complete
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 px-2 text-xs text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
+                                onClick={() => openStatusChangeModal(task.id, "block")}
+                              >
+                                <Ban className="h-3 w-3 mr-1" /> Block
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 px-2 text-xs text-yellow-600 border-yellow-200 hover:bg-yellow-50 hover:text-yellow-700"
+                                onClick={() => openStatusChangeModal(task.id, "postpone")}
+                              >
+                                <Clock className="h-3 w-3 mr-1" /> Postpone
+                              </Button>
+                            </>
+                          )}
+
+                          {(task.status === "Blocked" || task.status === "Postponed") && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 px-2 text-xs"
+                              onClick={() => handleChangeTaskStatus(task.id, "In Progress")}
+                            >
+                              <Play className="h-3 w-3 mr-1" /> Start
+                            </Button>
+                          )}
+                        </div>
                       </div>
                     </td>
                   </tr>
@@ -1225,6 +1553,116 @@ export function TasksTab({ projectId }: TasksTabProps) {
           </div>
         )}
       </div>
+
+      {/* Status change reason modal */}
+      <Dialog open={statusModalOpen} onOpenChange={setStatusModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{statusChangeType === "block" ? "Block Task" : "Postpone Task"}</DialogTitle>
+            <DialogDescription>
+              Please provide a reason for {statusChangeType === "block" ? "blocking" : "postponing"} this task.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="py-4">
+            <Label htmlFor="statusReason" className="mb-2 block">
+              Reason
+            </Label>
+            <Textarea
+              id="statusReason"
+              value={statusReason}
+              onChange={(e) => setStatusReason(e.target.value)}
+              placeholder={`Why are you ${statusChangeType === "block" ? "blocking" : "postponing"} this task?`}
+              className="min-h-[100px]"
+            />
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setStatusModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleStatusChangeConfirm}
+              disabled={!statusReason.trim()}
+              className={
+                statusChangeType === "block" ? "bg-red-600 hover:bg-red-700" : "bg-yellow-600 hover:bg-yellow-700"
+              }
+            >
+              Confirm
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Budget completion modal */}
+      <Dialog open={budgetModalOpen} onOpenChange={setBudgetModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Complete Task</DialogTitle>
+            <DialogDescription>Please enter the actual budget spent on this task.</DialogDescription>
+          </DialogHeader>
+
+          <div className="py-4 space-y-4">
+            <div>
+              <Label htmlFor="estimatedBudget" className="mb-2 block">
+                Estimated Budget
+              </Label>
+              <div className="flex items-center h-10 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm bg-gray-50 dark:bg-gray-800">
+                {formatCurrency(estimatedBudget)}
+              </div>
+            </div>
+
+            <div>
+              <Label htmlFor="actualBudget" className="mb-2 block">
+                Actual Budget
+              </Label>
+              <div className="relative">
+                <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-500" />
+                <Input
+                  id="actualBudget"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={actualBudget}
+                  onChange={(e) => setActualBudget(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+            </div>
+
+            {actualBudget && !isNaN(Number.parseFloat(actualBudget)) && (
+              <div
+                className={`p-3 rounded-md ${Number.parseFloat(actualBudget) > estimatedBudget ? "bg-red-50 dark:bg-red-900/20" : "bg-green-50 dark:bg-green-900/20"}`}
+              >
+                <p
+                  className={
+                    Number.parseFloat(actualBudget) > estimatedBudget
+                      ? "text-red-700 dark:text-red-300"
+                      : "text-green-700 dark:text-green-300"
+                  }
+                >
+                  {Number.parseFloat(actualBudget) > estimatedBudget
+                    ? `Over budget by ${formatCurrency(Number.parseFloat(actualBudget) - estimatedBudget)} (${(((Number.parseFloat(actualBudget) - estimatedBudget) / estimatedBudget) * 100).toFixed(1)}%)`
+                    : `Under budget by ${formatCurrency(estimatedBudget - Number.parseFloat(actualBudget))} (${(((estimatedBudget - Number.parseFloat(actualBudget)) / estimatedBudget) * 100).toFixed(1)}%)`}
+                </p>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBudgetModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleBudgetConfirm}
+              disabled={!actualBudget.trim() || isNaN(Number.parseFloat(actualBudget))}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              Complete Task
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

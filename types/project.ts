@@ -55,6 +55,7 @@ export interface Project {
   fundReleaseRequests?: FundReleaseRequest[]
   scheduledTransfers?: ScheduledTransfer[]
   projectManagerId?: string
+  defaultFundAccountId?: string
 }
 
 export interface ProjectFormData {
@@ -123,10 +124,16 @@ export interface ProjectTask {
   endDate: string
   duration: number
   resources: TaskResourceAssignment[]
-  createdAt: string
+  createdAt?: string
   // Add new field for multiple date ranges
   dateRanges?: { startDate: string; endDate: string }[]
   multipleRanges?: boolean
+  // Add new fields for status, priority, and reason
+  status: "Not Started" | "In Progress" | "Completed" | "Blocked" | "Postponed"
+  priority: "Low" | "Medium" | "High"
+  statusReason?: string
+  // Add new field for actual budget
+  actualBudget?: number
 }
 
 export interface TaskResourceAssignment {
