@@ -17,6 +17,7 @@ import Image from "next/image"
 import { getUserProfile } from "@/services/user-service"
 // Import the ProjectDonations component at the top of the file
 import { ProjectDonations } from "@/components/project-donations"
+import GanttChart from "@/components/ui/ganttChart"
 
 export default function ProjectDetailsPage() {
   const { id } = useParams()
@@ -560,6 +561,16 @@ export default function ProjectDetailsPage() {
                   >
                     Decision Gates
                   </button>
+                  <button
+                    onClick={() => setActivePlanningTab("ganttChart")}
+                    className={`pb-2 px-1 ${
+                      activePlanningTab === "decisionGates"
+                        ? "border-b-2 border-blue-500 text-blue-600 dark:text-blue-400"
+                        : "text-gray-500 dark:text-gray-400"
+                    }`}
+                  >
+                    Gantt Chart
+                  </button>
                 </div>
               </div>
 
@@ -877,6 +888,22 @@ export default function ProjectDetailsPage() {
                   )}
                 </div>
               )}
+
+              {/* Gantt Chart */}
+              {
+                activePlanningTab === "ganttChart" && (
+                  <div>
+                    <GanttChart
+                      tasks={project.tasks}
+                      activities={project.activities}
+                      deliverables={project.deliverables}
+                      decisionGates={project?.decisionGates ?? []}
+                      chartLoading={false}
+                      onElementClick={undefined}
+                    />
+                  </div>
+                )
+              }
             </TabsContent>
 
             {/* Risks Tab */}

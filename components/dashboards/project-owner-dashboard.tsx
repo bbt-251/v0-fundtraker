@@ -22,10 +22,14 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { submitFundReleaseRequest, getFundReleaseRequests, getProjects } from "@/services/project-service"
-import type { Project, FundReleaseRequest } from "@/types/project"
+import type { Project, FundReleaseRequest,ProjectActivity,ProjectTask,ProjectDeliverable,DecisionGate,HumanResource, MaterialResource } from "@/types/project"
 import type { MilestoneBudget } from "@/components/financial-resource-tab"
-import type { HumanResource, MaterialResource } from "@/types/project"
 import { UpcomingDeliverables } from "@/components/upcoming-deliverables"
+import GanttChart from "../ui/ganttChart"
+import { ActivityDetailModal } from "../modals/activity-detail-modal"
+import { TaskDetailModal } from "../modals/task-detail-modal"
+import { DeliverableDetailModal } from "../modals/deliverable-detail-modal"
+import { DecisionGateDetailModal } from "../modals/decision-gate-detail-modal"
 
 export default function ProjectOwnerDashboard() {
   const { userProfile, user } = useAuth()
@@ -47,6 +51,15 @@ export default function ProjectOwnerDashboard() {
     totalDonations: 0,
     pendingApprovals: 0,
   })
+
+  const [selectedActivity, setSelectedActivity] = useState<ProjectActivity | null>(null)
+  const [selectedTask, setSelectedTask] = useState<ProjectTask | null>(null)
+  const [selectedDeliverable, setSelectedDeliverable] = useState<ProjectDeliverable | null>(null)
+  const [selectedDecisionGate, setSelectedDecisionGate] = useState<DecisionGate | null>(null)
+  const [activityModalOpen, setActivityModalOpen] = useState<boolean>(false)
+  const [taskModalOpen, setTaskModalOpen] = useState<boolean>(false)
+  const [deliverableModalOpen, setDeliverableModalOpen] = useState<boolean>(false)
+  const [decisionGateModalOpen, setDecisionGateModalOpen] = useState<boolean>(false)
 
   useEffect(() => {
     const hour = new Date().getHours()
@@ -270,6 +283,51 @@ export default function ProjectOwnerDashboard() {
     }, 0)
   }
 
+  const handleElementClick = (task: any) => {
+    // Reset all selections
+    setSelectedActivity(null)
+    setSelectedTask(null)
+    setSelectedDeliverable(null)
+    setSelectedDecisionGate(null)
+
+    // Close all modals
+    setActivityModalOpen(false)
+    setTaskModalOpen(false)
+    setDeliverableModalOpen(false)
+    setDecisionGateModalOpen(false)
+
+    // Handle based on type
+    if (task.type === "project") {
+      // Find the activity
+      const activity = selectedProject?.activities.find((a) => a.id === task.id)
+      if (activity) {
+        setSelectedActivity(activity)
+        setActivityModalOpen(true)
+      }
+    } else if (task.type === "task") {
+      // Find the task
+      const projectTask = selectedProject?.tasks.find((t) => t.id === task.id)
+      if (projectTask) {
+        setSelectedTask(projectTask)
+        setTaskModalOpen(true)
+      }
+    } else if (task.type === "milestone") {
+      // Check if it's a deliverable or decision gate
+      const deliverable = selectedProject?.deliverables.find((d) => d.id === task.id)
+      if (deliverable) {
+        setSelectedDeliverable(deliverable)
+        setDeliverableModalOpen(true)
+        return
+      }
+
+      const decisionGate = selectedProject?.decisionGates?.find((dg) => dg.id === task.id)
+      if (decisionGate) {
+        setSelectedDecisionGate(decisionGate)
+        setDecisionGateModalOpen(true)
+      }
+    }
+  }
+
   const humanResourceTotal = calculateHumanResourceTotal()
   const materialResourceTotal = calculateMaterialResourceTotal()
   const totalCost = humanResourceTotal + materialResourceTotal || 1 // Prevent division by zero
@@ -361,100 +419,77 @@ export default function ProjectOwnerDashboard() {
           </select>
         </div>
 
-        {/* Project Timeline */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
-          <Card className="col-span-4">
-            <CardHeader>
-              <CardTitle>Project Timeline</CardTitle>
-              <CardDescription>Gantt chart representation of project schedule</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="h-[250px] w-full">
-                {/* Simple Gantt chart visualization */}
-                <div className="flex items-center justify-between text-xs text-muted-foreground mb-2">
-                  <span>0%</span>
-                  <span>25%</span>
-                  <span>50%</span>
-                  <span>75%</span>
-                  <span>100%</span>
-                </div>
-                <div className="h-[220px] space-y-6">
-                  {ganttData.map((item, index) => (
-                    <div key={index} className="relative h-8">
-                      <div className="absolute left-0 top-0 flex items-center h-full">
-                        <span className="text-sm font-medium">{item.task}</span>
-                      </div>
+        {/* Resource Utilization */}
+        <Card className="pb-8">
+          <CardHeader>
+            <CardTitle>Resource Utilization</CardTitle>
+            <CardDescription>Total utilization over project cost</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="h-[250px]">
+              {/* Resource utilization chart */}
+              <div className="space-y-6">
+                {resourceData.map((item, index) => (
+                  <div key={index} className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm font-medium">{item.name}</span>
+                      <span className="text-xs text-muted-foreground">
+                        Budget: {item.allocated}% | Actual: {item.actual}%
+                      </span>
+                    </div>
+                    <div className="relative h-4 w-full bg-muted rounded-full overflow-hidden">
+                      {/* Allocated budget bar */}
                       <div
-                        className="absolute h-6 bg-muted rounded-sm"
-                        style={{
-                          left: `${item.start}%`,
-                          width: `${item.duration}%`,
-                          top: "4px",
-                        }}
-                      >
-                        <div className="h-full bg-primary rounded-sm" style={{ width: `${item.complete}%` }} />
-                      </div>
-                      <div className="absolute right-0 top-0 flex items-center h-full">
-                        <span className="text-xs text-muted-foreground">{item.complete}%</span>
-                      </div>
+                        className="absolute h-full bg-primary/30 rounded-full"
+                        style={{ width: `${item.allocated}%` }}
+                      />
+                      {/* Actual usage bar */}
+                      <div
+                        className={`absolute h-full rounded-full ${
+                          item.actual > item.allocated ? "bg-destructive" : "bg-primary"
+                        }`}
+                        style={{ width: `${item.actual}%` }}
+                      />
                     </div>
-                  ))}
+                  </div>
+                ))}
+              </div>
+              <div className="flex justify-between items-center mt-6 text-xs text-muted-foreground">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 bg-primary/30 rounded-full"></div>
+                  <span>Allocated Budget</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 bg-primary rounded-full"></div>
+                  <span>Actual Usage</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 bg-destructive rounded-full"></div>
+                  <span>Over Budget</span>
                 </div>
               </div>
-            </CardContent>
-          </Card>
-          <Card className="col-span-3">
-            <CardHeader>
-              <CardTitle>Resource Utilization</CardTitle>
-              <CardDescription>Total utilization over project cost</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="h-[250px]">
-                {/* Resource utilization chart */}
-                <div className="space-y-6">
-                  {resourceData.map((item, index) => (
-                    <div key={index} className="space-y-2">
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm font-medium">{item.name}</span>
-                        <span className="text-xs text-muted-foreground">
-                          Budget: {item.allocated}% | Actual: {item.actual}%
-                        </span>
-                      </div>
-                      <div className="relative h-4 w-full bg-muted rounded-full overflow-hidden">
-                        {/* Allocated budget bar */}
-                        <div
-                          className="absolute h-full bg-primary/30 rounded-full"
-                          style={{ width: `${item.allocated}%` }}
-                        />
-                        {/* Actual usage bar */}
-                        <div
-                          className={`absolute h-full rounded-full ${
-                            item.actual > item.allocated ? "bg-destructive" : "bg-primary"
-                          }`}
-                          style={{ width: `${item.actual}%` }}
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                <div className="flex justify-between items-center mt-6 text-xs text-muted-foreground">
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 bg-primary/30 rounded-full"></div>
-                    <span>Allocated Budget</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 bg-primary rounded-full"></div>
-                    <span>Actual Usage</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 bg-destructive rounded-full"></div>
-                    <span>Over Budget</span>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Project Timeline */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Project Timeline</CardTitle>
+            <CardDescription>Gantt chart representation of project schedule</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <GanttChart
+              tasks={selectedProject?.tasks??[]}
+              activities={selectedProject?.activities??[]}
+              deliverables={selectedProject?.deliverables??[]}
+              decisionGates={selectedProject?.decisionGates ?? []}
+              chartLoading={false}
+              onElementClick={handleElementClick}
+            />
+          </CardContent>
+        </Card>
+        
 
         {/* Activity Progress */}
         <Card className="mt-6">
@@ -657,6 +692,24 @@ export default function ProjectOwnerDashboard() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Detail Modals */}
+      <ActivityDetailModal
+        isOpen={activityModalOpen}
+        onClose={() => setActivityModalOpen(false)}
+        activity={selectedActivity}
+      />
+      <TaskDetailModal isOpen={taskModalOpen} onClose={() => setTaskModalOpen(false)} task={selectedTask} />
+      <DeliverableDetailModal
+        isOpen={deliverableModalOpen}
+        onClose={() => setDeliverableModalOpen(false)}
+        deliverable={selectedDeliverable}
+      />
+      <DecisionGateDetailModal
+        isOpen={decisionGateModalOpen}
+        onClose={() => setDecisionGateModalOpen(false)}
+        decisionGate={selectedDecisionGate}
+      />
     </div>
   )
 }

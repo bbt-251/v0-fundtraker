@@ -174,7 +174,6 @@ export const GanttChart = (
     },[activities, decisionGates, deliverables, tasks])
 
 
-    
     return(
         <div className='mt-[1rem]'>
             {
@@ -194,7 +193,9 @@ export const GanttChart = (
                         tasks={formattedData}
                         viewMode={viewMode}
                         onClick={onElementClick}
-                        
+                        distances={{
+                            actionColumnWidth:0,
+                        }}
                     />
                 </div>
                 :chartLoading?

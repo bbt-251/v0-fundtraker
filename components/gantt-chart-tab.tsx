@@ -1,11 +1,7 @@
 "use client"
 import { useState, useEffect } from "react"
 import { getProject } from "@/services/project-service"
-import type { Project } from "@/types/project"
-import type { ProjectActivity } from "@/types/project-activity"
-import type { ProjectTask } from "@/types/project-task"
-import type { ProjectDeliverable } from "@/types/project-deliverable"
-import type { DecisionGate } from "@/types/decision-gate"
+import type { Project, ProjectActivity,ProjectTask,ProjectDeliverable,DecisionGate} from "@/types/project";
 import { LoadingAnimation } from "@/components/loading-animation"
 import {
   Chart as ChartJS,
