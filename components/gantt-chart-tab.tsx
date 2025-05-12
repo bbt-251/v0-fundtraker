@@ -2,6 +2,10 @@
 import { useState, useEffect } from "react"
 import { getProject } from "@/services/project-service"
 import type { Project } from "@/types/project"
+import type { ProjectActivity } from "@/types/project-activity"
+import type { ProjectTask } from "@/types/project-task"
+import type { ProjectDeliverable } from "@/types/project-deliverable"
+import type { DecisionGate } from "@/types/decision-gate"
 import { LoadingAnimation } from "@/components/loading-animation"
 import {
   Chart as ChartJS,
@@ -16,6 +20,10 @@ import {
 import "chartjs-adapter-date-fns"
 import { parseISO, differenceInDays } from "date-fns"
 import GanttChart from "./ui/ganttChart"
+import { ActivityDetailModal } from "./modals/activity-detail-modal"
+import { TaskDetailModal } from "./modals/task-detail-modal"
+import { DecisionGateDetailModal } from "./modals/decision-gate-detail-modal"
+import { DeliverableDetailModal } from "./modals/deliverable-detail-modal"
 
 // Register Chart.js components
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, ChartTooltip, Legend, TimeScale)
@@ -27,7 +35,7 @@ interface GanttChartTabProps {
 interface GanttItem {
   id: string
   name: string
-  type: "activity" | "task"
+  type: "activity" | "task" | "milestone"
   startDate: Date
   endDate: Date
   duration: number
@@ -39,7 +47,15 @@ export function GanttChartTab({ projectId }: GanttChartTabProps) {
   const [project, setProject] = useState<Project | null>(null)
   const [loading, setLoading] = useState<boolean>(true)
   const [error, setError] = useState<string | null>(null)
-  const [ganttItems, setGanttItems] = useState<GanttItem[]>([])  
+  const [ganttItems, setGanttItems] = useState<GanttItem[]>([])
+  const [selectedActivity, setSelectedActivity] = useState<ProjectActivity | null>(null)
+  const [selectedTask, setSelectedTask] = useState<ProjectTask | null>(null)
+  const [selectedDeliverable, setSelectedDeliverable] = useState<ProjectDeliverable | null>(null)
+  const [selectedDecisionGate, setSelectedDecisionGate] = useState<DecisionGate | null>(null)
+  const [activityModalOpen, setActivityModalOpen] = useState<boolean>(false)
+  const [taskModalOpen, setTaskModalOpen] = useState<boolean>(false)
+  const [deliverableModalOpen, setDeliverableModalOpen] = useState<boolean>(false)
+  const [decisionGateModalOpen, setDecisionGateModalOpen] = useState<boolean>(false)
 
   useEffect(() => {
     const fetchProject = async () => {
@@ -131,12 +147,56 @@ export function GanttChartTab({ projectId }: GanttChartTabProps) {
           duration,
           activityId: task.activityId,
           parentName,
-          
         })
       })
     }
 
     setGanttItems(items)
+  }
+
+  const handleElementClick = (task: any) => {
+    // Reset all selections
+    setSelectedActivity(null)
+    setSelectedTask(null)
+    setSelectedDeliverable(null)
+    setSelectedDecisionGate(null)
+
+    // Close all modals
+    setActivityModalOpen(false)
+    setTaskModalOpen(false)
+    setDeliverableModalOpen(false)
+    setDecisionGateModalOpen(false)
+
+    // Handle based on type
+    if (task.type === "project") {
+      // Find the activity
+      const activity = project?.activities.find((a) => a.id === task.id)
+      if (activity) {
+        setSelectedActivity(activity)
+        setActivityModalOpen(true)
+      }
+    } else if (task.type === "task") {
+      // Find the task
+      const projectTask = project?.tasks.find((t) => t.id === task.id)
+      if (projectTask) {
+        setSelectedTask(projectTask)
+        setTaskModalOpen(true)
+      }
+    } else if (task.type === "milestone") {
+      // Check if it's a deliverable or decision gate
+      const deliverable = project?.deliverables.find((d) => d.id === task.id)
+      if (deliverable) {
+        setSelectedDeliverable(deliverable)
+        setDeliverableModalOpen(true)
+        return
+      }
+
+      const decisionGate = project?.decisionGates?.find((dg) => dg.id === task.id)
+      if (decisionGate) {
+        setSelectedDecisionGate(decisionGate)
+        setDecisionGateModalOpen(true)
+      }
+    }
   }
 
   if (loading) {
@@ -171,15 +231,32 @@ export function GanttChartTab({ projectId }: GanttChartTabProps) {
         <h3 className="text-lg font-medium">Project Gantt Chart</h3>
       </div>
 
-      <GanttChart 
-        tasks={project.tasks} 
-        activities={project.activities} 
-        deliverables={project.deliverables} 
-        decisionGates={project.decisionGates??[]} 
-        chartLoading={false} 
-        onElementClick={undefined}
+      <GanttChart
+        tasks={project.tasks}
+        activities={project.activities}
+        deliverables={project.deliverables}
+        decisionGates={project.decisionGates ?? []}
+        chartLoading={false}
+        onElementClick={handleElementClick}
       />
 
+      {/* Detail Modals */}
+      <ActivityDetailModal
+        isOpen={activityModalOpen}
+        onClose={() => setActivityModalOpen(false)}
+        activity={selectedActivity}
+      />
+      <TaskDetailModal isOpen={taskModalOpen} onClose={() => setTaskModalOpen(false)} task={selectedTask} />
+      <DeliverableDetailModal
+        isOpen={deliverableModalOpen}
+        onClose={() => setDeliverableModalOpen(false)}
+        deliverable={selectedDeliverable}
+      />
+      <DecisionGateDetailModal
+        isOpen={decisionGateModalOpen}
+        onClose={() => setDecisionGateModalOpen(false)}
+        decisionGate={selectedDecisionGate}
+      />
     </div>
   )
 }
