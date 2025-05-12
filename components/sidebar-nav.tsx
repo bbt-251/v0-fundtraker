@@ -17,6 +17,7 @@ import {
   Wallet,
   CheckCircle,
   User,
+  Calendar,
 } from "lucide-react"
 
 interface SidebarNavProps {
@@ -46,6 +47,7 @@ export function SidebarNav({ className, items = [] }: SidebarNavProps) {
       Wallet: <Wallet className="h-5 w-5" />,
       CheckCircle: <CheckCircle className="h-5 w-5" />,
       User: <User className="h-5 w-5" />,
+      Calendar: <Calendar className="h-5 w-5" />,
     }
     return icons[iconName] || <LayoutDashboard className="h-5 w-5" />
   }

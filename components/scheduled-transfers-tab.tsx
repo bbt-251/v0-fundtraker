@@ -12,7 +12,7 @@ import { format } from "date-fns"
 import { getScheduledTransfers, updateScheduledTransfer } from "@/services/project-service"
 import type { ScheduledTransfer } from "@/types/project"
 import { auth } from "@/lib/firebase/firebase"
-import { DatePickerWrapper as DatePicker } from "@/components/ui/date-picker-wrapper"
+import { DatePicker } from "@/components/ui/ant-date-picker"
 
 export function ScheduledTransfersTab() {
   const [transfers, setTransfers] = useState<ScheduledTransfer[]>([])

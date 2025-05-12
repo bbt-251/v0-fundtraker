@@ -109,7 +109,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   )
 }
 
-// Update the getNavItems function to match the new navigation structure
+// Update the getNavItems function to include Daily Activity for Project Owners
+
 function getNavItems(role?: string) {
   // Common route for all roles
   const accountItem = {
@@ -144,6 +145,11 @@ function getNavItems(role?: string) {
         title: "My Projects",
         href: "/my-projects",
         icon: "FolderKanban",
+      },
+      {
+        title: "Daily Activity",
+        href: "/daily-activity",
+        icon: "Calendar",
       },
       accountItem,
     ]

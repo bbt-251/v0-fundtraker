@@ -6,11 +6,10 @@ export default function EditProjectLayout({
 }: {
   children: React.ReactNode
 }) {
-
   return (
     <div className="flex min-h-screen flex-col">
       <AppHeader />
-        <main className="flex w-full flex-col overflow-hidden">{children}</main>
+      <main className="flex w-full flex-col overflow-hidden">{children}</main>
     </div>
   )
 }

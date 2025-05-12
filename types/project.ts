@@ -132,8 +132,6 @@ export interface ProjectTask {
   status: "Not Started" | "In Progress" | "Completed" | "Blocked" | "Postponed"
   priority: "Low" | "Medium" | "High"
   statusReason?: string
-  // Add new field for actual budget
-  actualBudget?: number
 }
 
 export interface TaskResourceAssignment {

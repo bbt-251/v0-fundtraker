@@ -25,6 +25,7 @@ import { submitFundReleaseRequest, getFundReleaseRequests, getProjects } from "@
 import type { Project, FundReleaseRequest } from "@/types/project"
 import type { MilestoneBudget } from "@/components/financial-resource-tab"
 import type { HumanResource, MaterialResource } from "@/types/project"
+import { UpcomingDeliverables } from "@/components/upcoming-deliverables"
 
 export default function ProjectOwnerDashboard() {
   const { userProfile, user } = useAuth()
@@ -485,6 +486,9 @@ export default function ProjectOwnerDashboard() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Upcoming Deliverables */}
+        <UpcomingDeliverables projects={projects} />
       </div>
 
       {/* Fund Release Workflow */}

@@ -3,19 +3,7 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import {
-  Edit,
-  Trash2,
-  Plus,
-  Loader2,
-  ArrowRight,
-  MoreHorizontal,
-  Clock,
-  CheckCircle,
-  Play,
-  Ban,
-  DollarSign,
-} from "lucide-react"
+import { Edit, Trash2, Plus, Loader2, ArrowRight, MoreHorizontal, Clock, CheckCircle, Play, Ban } from "lucide-react"
 import {
   addProjectTask,
   updateProjectTask,
@@ -26,8 +14,7 @@ import {
 } from "@/services/project-service"
 import type { ProjectActivity, ProjectTask, HumanResource, MaterialResource } from "@/types/project"
 import { format } from "date-fns"
-import { DateRangePickerWrapper as DateRangePicker } from "@/components/ui/date-picker-wrapper"
-import type { MultiDateRange, DateRange } from "@/components/ui/date-picker"
+import { DateRangePicker, type MultiDateRange, type DateRange } from "@/components/ui/date-picker"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover"
@@ -42,7 +29,6 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Textarea } from "@/components/ui/textarea"
-import { Input } from "@/components/ui/input"
 
 interface TasksTabProps {
   projectId: string
@@ -85,12 +71,6 @@ export function TasksTab({ projectId }: TasksTabProps) {
   const [statusChangeType, setStatusChangeType] = useState<"block" | "postpone" | null>(null)
   const [statusReason, setStatusReason] = useState("")
   const [taskToChangeStatus, setTaskToChangeStatus] = useState<string | null>(null)
-
-  // Budget completion modal state
-  const [budgetModalOpen, setBudgetModalOpen] = useState(false)
-  const [taskToComplete, setTaskToComplete] = useState<string | null>(null)
-  const [actualBudget, setActualBudget] = useState("")
-  const [estimatedBudget, setEstimatedBudget] = useState(0)
 
   // Fetch project data when component mounts
   useEffect(() => {
@@ -509,61 +489,10 @@ export function TasksTab({ projectId }: TasksTabProps) {
     }
   }
 
-  // Handle task completion with budget
-  const openBudgetModal = (taskId: string) => {
-    const task = tasks.find((t) => t.id === taskId)
-    if (task) {
-      const estimatedBudget = calculateTaskTotalCost(task)
-      setTaskToComplete(taskId)
-      setEstimatedBudget(estimatedBudget)
-      setActualBudget(estimatedBudget.toString()) // Default to estimated budget
-      setBudgetModalOpen(true)
-    }
-  }
-
-  const handleBudgetConfirm = async () => {
-    if (!taskToComplete) return
-
-    try {
-      setLoading(true)
-
-      // Parse the actual budget as a number
-      const actualBudgetValue = Number.parseFloat(actualBudget)
-
-      if (isNaN(actualBudgetValue)) {
-        setError("Please enter a valid budget amount")
-        return
-      }
-
-      // Update the task with the actual budget and completed status
-      const updatedTask = await updateProjectTask(projectId, taskToComplete, {
-        status: "Completed",
-        actualBudget: actualBudgetValue,
-      })
-
-      // Update local state
-      setTasks(tasks.map((task) => (task.id === taskToComplete ? updatedTask : task)))
-      setError("")
-
-      // Close modal and reset state
-      setBudgetModalOpen(false)
-      setTaskToComplete(null)
-      setActualBudget("")
-    } catch (error: any) {
-      setError(error.message || "Failed to complete task")
-    } finally {
-      setLoading(false)
-    }
-  }
-
   // Fix the handleChangeTaskStatus function to ensure we're not passing undefined values
-  const handleChangeTaskStatus = async (taskId: string, newStatus: ProjectTask["status"], reason?: string) => {
-    // If the new status is "Completed", open the budget modal instead of updating directly
-    if (newStatus === "Completed") {
-      openBudgetModal(taskId)
-      return
-    }
 
+  // Replace the handleChangeTaskStatus function with this improved version:
+  const handleChangeTaskStatus = async (taskId: string, newStatus: ProjectTask["status"], reason?: string) => {
     try {
       setLoading(true)
 
@@ -1354,7 +1283,7 @@ export function TasksTab({ projectId }: TasksTabProps) {
                     Resources
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    Budget
+                    Cost
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                     Actions
@@ -1422,33 +1351,7 @@ export function TasksTab({ projectId }: TasksTabProps) {
                       </div>
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap font-medium">
-                      {task.status === "Completed" && task.actualBudget !== undefined ? (
-                        <div>
-                          <div
-                            className={
-                              task.actualBudget > calculateTaskTotalCost(task) ? "text-red-600" : "text-green-600"
-                            }
-                          >
-                            {formatCurrency(task.actualBudget)}
-                          </div>
-                          <div className="text-xs text-gray-500 mt-1">
-                            Est: {formatCurrency(calculateTaskTotalCost(task))}
-                          </div>
-                          <div className="text-xs mt-1">
-                            {task.actualBudget > calculateTaskTotalCost(task) ? (
-                              <span className="text-red-600">
-                                +{formatCurrency(task.actualBudget - calculateTaskTotalCost(task))}
-                              </span>
-                            ) : (
-                              <span className="text-green-600">
-                                -{formatCurrency(calculateTaskTotalCost(task) - task.actualBudget)}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      ) : (
-                        formatCurrency(calculateTaskTotalCost(task))
-                      )}
+                      {formatCurrency(calculateTaskTotalCost(task))}
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap">
                       <div className="flex flex-col space-y-2">
@@ -1589,76 +1492,6 @@ export function TasksTab({ projectId }: TasksTabProps) {
               }
             >
               Confirm
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Budget completion modal */}
-      <Dialog open={budgetModalOpen} onOpenChange={setBudgetModalOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Complete Task</DialogTitle>
-            <DialogDescription>Please enter the actual budget spent on this task.</DialogDescription>
-          </DialogHeader>
-
-          <div className="py-4 space-y-4">
-            <div>
-              <Label htmlFor="estimatedBudget" className="mb-2 block">
-                Estimated Budget
-              </Label>
-              <div className="flex items-center h-10 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm bg-gray-50 dark:bg-gray-800">
-                {formatCurrency(estimatedBudget)}
-              </div>
-            </div>
-
-            <div>
-              <Label htmlFor="actualBudget" className="mb-2 block">
-                Actual Budget
-              </Label>
-              <div className="relative">
-                <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-500" />
-                <Input
-                  id="actualBudget"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={actualBudget}
-                  onChange={(e) => setActualBudget(e.target.value)}
-                  className="pl-9"
-                />
-              </div>
-            </div>
-
-            {actualBudget && !isNaN(Number.parseFloat(actualBudget)) && (
-              <div
-                className={`p-3 rounded-md ${Number.parseFloat(actualBudget) > estimatedBudget ? "bg-red-50 dark:bg-red-900/20" : "bg-green-50 dark:bg-green-900/20"}`}
-              >
-                <p
-                  className={
-                    Number.parseFloat(actualBudget) > estimatedBudget
-                      ? "text-red-700 dark:text-red-300"
-                      : "text-green-700 dark:text-green-300"
-                  }
-                >
-                  {Number.parseFloat(actualBudget) > estimatedBudget
-                    ? `Over budget by ${formatCurrency(Number.parseFloat(actualBudget) - estimatedBudget)} (${(((Number.parseFloat(actualBudget) - estimatedBudget) / estimatedBudget) * 100).toFixed(1)}%)`
-                    : `Under budget by ${formatCurrency(estimatedBudget - Number.parseFloat(actualBudget))} (${(((estimatedBudget - Number.parseFloat(actualBudget)) / estimatedBudget) * 100).toFixed(1)}%)`}
-                </p>
-              </div>
-            )}
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setBudgetModalOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={handleBudgetConfirm}
-              disabled={!actualBudget.trim() || isNaN(Number.parseFloat(actualBudget))}
-              className="bg-green-600 hover:bg-green-700"
-            >
-              Complete Task
             </Button>
           </DialogFooter>
         </DialogContent>

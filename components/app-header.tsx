@@ -80,7 +80,8 @@ export function AppHeader() {
   )
 }
 
-// Update the getNavItems function to match the sidebar navigation
+// Update the getNavItems function to include Daily Activity for Project Owners
+
 function getNavItems(role?: string) {
   // Common route for all roles
   const accountItem = {
@@ -115,6 +116,11 @@ function getNavItems(role?: string) {
         title: "Projects",
         href: "/projects",
         icon: "FolderKanban",
+      },
+      {
+        title: "Daily Activity",
+        href: "/daily-activity",
+        icon: "Calendar",
       },
       accountItem,
     ]

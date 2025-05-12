@@ -35,6 +35,7 @@ export default function EditProjectPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState("")
   const [definitionStep, setDefinitionStep] = useState<"project-info" | "documentation">("project-info")
+  const [resourceError, setResourceError] = useState(false)
 
   // Form data
   const [formData, setFormData] = useState({
@@ -143,7 +144,7 @@ export default function EditProjectPage() {
       await updateProject(projectId, formData)
 
       // Navigate back to projects page
-      router.push("/projects")
+      router.push("/my-projects")
     } catch (error: any) {
       setError(error.message || "Failed to update project")
     } finally {
@@ -163,6 +164,11 @@ export default function EditProjectPage() {
     }
   }
 
+  const handleResourceError = () => {
+    setResourceError(true)
+    console.error("Failed to load a resource")
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
@@ -178,7 +184,7 @@ export default function EditProjectPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
           <div className="flex items-center">
             <Link
-              href="/projects"
+              href="/my-projects"
               className="flex items-center text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400"
             >
               <ArrowLeft className="h-5 w-5 mr-2" />
@@ -215,11 +221,13 @@ export default function EditProjectPage() {
           </div>
 
           {/* Error Message */}
-          {error && (
+          {error || resourceError ? (
             <div className="px-8 py-4 bg-red-50 dark:bg-red-900/20 border-b border-red-200 dark:border-red-800">
-              <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+              <p className="text-sm text-red-600 dark:text-red-400">
+                {error || "Failed to load some resources. Please try refreshing the page."}
+              </p>
             </div>
-          )}
+          ) : null}
 
           {/* Tabs */}
           <Tabs defaultValue="definition" value={activeTab} onValueChange={setActiveTab}>

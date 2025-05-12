@@ -5,6 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { BarChart, Users, FolderKanban, DollarSign, Loader2 } from "lucide-react"
 import { collection, getDocs, query, where, getFirestore } from "firebase/firestore"
 import { formatCurrency } from "@/lib/utils/currency-utils"
+import { UpcomingDeliverables } from "@/components/upcoming-deliverables"
+import type { Project } from "@/types/project"
 
 export default function PlatformGovernorDashboard() {
   const [loading, setLoading] = useState(true)
@@ -16,6 +18,7 @@ export default function PlatformGovernorDashboard() {
     totalFunds: 0,
     pendingApprovals: 0,
   })
+  const [projects, setProjects] = useState<Project[]>([])
 
   useEffect(() => {
     async function fetchDashboardStats() {
@@ -30,8 +33,14 @@ export default function PlatformGovernorDashboard() {
 
         // Fetch projects
         const projectsSnapshot = await getDocs(collection(db, "projects"))
-        const totalProjects = projectsSnapshot.size
-        const activeProjects = projectsSnapshot.docs.filter((doc) => doc.data().isInExecution).length
+        const projectsData = projectsSnapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        })) as Project[]
+
+        setProjects(projectsData)
+        const totalProjects = projectsData.length
+        const activeProjects = projectsData.filter((doc) => doc.isInExecution).length
 
         // Calculate total funds (donations)
         const donationsSnapshot = await getDocs(collection(db, "donations"))
@@ -132,6 +141,9 @@ export default function PlatformGovernorDashboard() {
           <p className="text-muted-foreground">No recent activity to display.</p>
         </CardContent>
       </Card>
+
+      {/* Upcoming Deliverables */}
+      <UpcomingDeliverables projects={projects} />
     </div>
   )
 }

@@ -1,4 +1,4 @@
-import { db, storage } from "@/lib/firebase/firebase"
+import { db } from "@/lib/firebase/firebase"
 import {
   collection,
   doc,
@@ -64,7 +64,20 @@ export async function getProject(id: string): Promise<Project | null> {
     const projectSnap = await getDoc(projectRef)
 
     if (projectSnap.exists()) {
-      return { id: projectSnap.id, ...projectSnap.data() } as Project
+      const data = projectSnap.data()
+      // Ensure all document URLs are valid
+      const documents = data.documents || []
+      const validatedDocuments = documents.map((doc) => ({
+        ...doc,
+        // Ensure URL is a string and not a blob URL that might cause issues
+        url: typeof doc.url === "string" ? doc.url : "",
+      }))
+
+      return {
+        id: projectSnap.id,
+        ...data,
+        documents: validatedDocuments,
+      } as Project
     } else {
       return null
     }
@@ -599,6 +612,24 @@ export const deleteProjectActivity = async (projectId: string, activityId: strin
   } catch (error) {
     console.error("Error deleting project activity:", error)
     throw error
+  }
+}
+
+// Function to get all activities for a project
+export async function getProjectActivities(projectId: string): Promise<ProjectActivity[]> {
+  try {
+    const projectRef = doc(db, "projects", projectId)
+    const projectSnap = await getDoc(projectRef)
+
+    if (projectSnap.exists()) {
+      const projectData = projectSnap.data() as Project
+      return projectData.activities || []
+    } else {
+      throw new Error("Project not found")
+    }
+  } catch (error) {
+    console.error("Error getting project activities:", error)
+    throw new Error("Failed to fetch project activities")
   }
 }
 
