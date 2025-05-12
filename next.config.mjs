@@ -1,5 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  reactStrictMode: true,
+  swcMinify: true,
+  // This is important for MUI to work correctly with Next.js
+  transpilePackages: ['@mui/material', '@mui/system', '@mui/icons-material'],
   eslint: {
     ignoreDuringBuilds: true,
   },
@@ -9,6 +13,6 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
-}
+};
 
-export default nextConfig
+export default nextConfig;
