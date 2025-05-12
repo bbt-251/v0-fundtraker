@@ -26,7 +26,8 @@ Toast.displayName = ToastPrimitives.Root.displayName
 
 const ToastTrigger = ToastPrimitives.Trigger
 
-const ToastPortal = ToastPrimitives.Portal
+// In newer versions of Radix UI, Portal is imported separately
+import { Portal as ToastPortal } from "@radix-ui/react-portal"
 
 const ToastClose = React.forwardRef<
   React.ElementRef<typeof ToastPrimitives.Close>,
