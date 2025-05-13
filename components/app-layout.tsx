@@ -109,7 +109,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   )
 }
 
-// Update the getNavItems function to include Daily Activity for Project Owners
+// Update the getNavItems function to include Team section for Project Owners
 
 function getNavItems(role?: string) {
   // Common route for all roles
@@ -150,6 +150,21 @@ function getNavItems(role?: string) {
         title: "Daily Activity",
         href: "/daily-activity",
         icon: "Calendar",
+      },
+      {
+        title: "Team",
+        href: "#",
+        icon: "Users2",
+        children: [
+          {
+            title: "Team Members",
+            href: "/team/members",
+          },
+          {
+            title: "Time Tracking & Leave",
+            href: "/team/time-tracking",
+          },
+        ],
       },
       accountItem,
     ]

@@ -5,13 +5,22 @@ import { ProfileDropdown } from "./profile-dropdown"
 import { ThemeToggle } from "./theme-toggle"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { PlusCircle, Menu, Bell, Search } from "lucide-react"
+import { PlusCircle, Menu, Bell, Search, Users2, ChevronDown, ChevronRight } from "lucide-react"
 import { useState } from "react"
 
 export function AppHeader() {
   const { user, userProfile } = useAuth()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({})
   const pathname = usePathname()
+
+  // Toggle expanded state for items with children
+  const toggleExpanded = (title: string) => {
+    setExpandedItems((prev) => ({
+      ...prev,
+      [title]: !prev[title],
+    }))
+  }
 
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b bg-white dark:bg-gray-800 px-4 md:px-6">
@@ -27,22 +36,60 @@ export function AppHeader() {
 
         {/* Mobile menu - visible when toggled on small screens */}
         {isMobileMenuOpen && (
-          <div className="fixed inset-0 top-16 z-20 bg-white dark:bg-gray-800 lg:hidden">
+          <div className="fixed inset-0 top-16 z-20 bg-white dark:bg-gray-800 lg:hidden overflow-y-auto">
             <nav className="p-4 space-y-2">
               {getNavItems(userProfile?.role).map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={`flex items-center rounded-md px-3 py-2 text-sm font-medium ${
-                    pathname === item.href || pathname.startsWith(`${item.href}/`)
-                      ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
-                      : "text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
-                  }`}
-                  onClick={() => setIsMobileMenuOpen(false)}
-                >
-                  {getIcon(item.icon)}
-                  {item.title}
-                </Link>
+                <div key={item.title} className="space-y-1">
+                  {item.children ? (
+                    <>
+                      <button
+                        onClick={() => toggleExpanded(item.title)}
+                        className="flex w-full items-center justify-between px-3 py-2 text-sm font-medium rounded-md text-gray-700 dark:text-gray-300"
+                      >
+                        <div className="flex items-center">
+                          {getIcon(item.icon)}
+                          {item.title}
+                        </div>
+                        {expandedItems[item.title] ? (
+                          <ChevronDown className="h-4 w-4" />
+                        ) : (
+                          <ChevronRight className="h-4 w-4" />
+                        )}
+                      </button>
+                      {expandedItems[item.title] && (
+                        <div className="ml-6 space-y-1">
+                          {item.children.map((child) => (
+                            <Link
+                              key={child.href}
+                              href={child.href}
+                              className={`flex items-center rounded-md px-3 py-2 text-sm font-medium ${
+                                pathname === child.href || pathname.startsWith(`${child.href}/`)
+                                  ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
+                                  : "text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
+                              }`}
+                              onClick={() => setIsMobileMenuOpen(false)}
+                            >
+                              {child.title}
+                            </Link>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <Link
+                      href={item.href}
+                      className={`flex items-center rounded-md px-3 py-2 text-sm font-medium ${
+                        pathname === item.href || pathname.startsWith(`${item.href}/`)
+                          ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
+                          : "text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
+                      }`}
+                      onClick={() => setIsMobileMenuOpen(false)}
+                    >
+                      {getIcon(item.icon)}
+                      {item.title}
+                    </Link>
+                  )}
+                </div>
               ))}
             </nav>
           </div>
@@ -80,7 +127,7 @@ export function AppHeader() {
   )
 }
 
-// Update the getNavItems function to include Daily Activity for Project Owners
+// Update the getNavItems function to include Team section for Project Owners
 
 function getNavItems(role?: string) {
   // Common route for all roles
@@ -121,6 +168,21 @@ function getNavItems(role?: string) {
         title: "Daily Activity",
         href: "/daily-activity",
         icon: "Calendar",
+      },
+      {
+        title: "Team",
+        href: "#",
+        icon: "Users2",
+        children: [
+          {
+            title: "Team Members",
+            href: "/team/members",
+          },
+          {
+            title: "Time Tracking & Leave",
+            href: "/team/time-tracking",
+          },
+        ],
       },
       accountItem,
     ]
@@ -169,5 +231,8 @@ function getNavItems(role?: string) {
 // Helper function to get icon component
 function getIcon(iconName: string) {
   // This is a simplified version - in a real app, you'd import and use actual icon components
+  if (iconName === "Users2") {
+    return <Users2 className="mr-3 h-5 w-5" />
+  }
   return <span className="mr-3 h-5 w-5">{iconName}</span>
 }
