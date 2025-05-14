@@ -77,6 +77,7 @@ export default function ProjectOwnerDashboard() {
       allocatedAmount: number
       actualPercent: number
       actualAmount: number
+      createdAt: string
     }[]
   >([])
 
@@ -164,14 +165,62 @@ export default function ProjectOwnerDashboard() {
         allocatedAmount,
         actualPercent,
         actualAmount,
+        createdAt: activity.createdAt || new Date().toISOString(), // Include creation date
       }
     })
 
-    // Sort by allocated amount descending
-    utilizationData.sort((a, b) => b.allocatedAmount - a.allocatedAmount)
+    // Sort by creation date (oldest first)
+    utilizationData.sort((a, b) => {
+      const dateA = new Date(a.createdAt).getTime()
+      const dateB = new Date(b.createdAt).getTime()
+      return dateA - dateB
+    })
 
     // Take top 5 activities for display
     setResourceUtilizationData(utilizationData.slice(0, 5))
+  }
+
+  // Get the last due date for an activity based on its tasks
+  const getActivityDueDate = (activityId: string) => {
+    if (!selectedProject) return null
+
+    const activityTasks = selectedProject.tasks.filter((task) => task.activityId === activityId)
+
+    if (activityTasks.length === 0) return null
+
+    // Find the task with the latest end date
+    let latestDate = new Date(0) // Start with earliest possible date
+
+    activityTasks.forEach((task) => {
+      if (task.endDate) {
+        const taskEndDate = new Date(task.endDate)
+        if (taskEndDate > latestDate) {
+          latestDate = taskEndDate
+        }
+      }
+    })
+
+    // If we found a valid date (not the initial date)
+    if (latestDate.getTime() !== new Date(0).getTime()) {
+      return latestDate
+    }
+
+    return null
+  }
+
+  // Calculate the completion percentage of an activity based on its tasks
+  const calculateActivityProgress = (activityId: string) => {
+    if (!selectedProject) return 0
+
+    const activityTasks = selectedProject.tasks.filter((task) => task.activityId === activityId)
+
+    if (activityTasks.length === 0) return 0
+
+    // Count completed tasks
+    const completedTasks = activityTasks.filter((task) => task.status === "Completed").length
+
+    // Calculate percentage
+    return Math.round((completedTasks / activityTasks.length) * 100)
   }
 
   // Update resource utilization when selected project, humanResources, or materialResources change
@@ -586,19 +635,27 @@ export default function ProjectOwnerDashboard() {
           </CardHeader>
           <CardContent>
             <div className="space-y-8">
-              {selectedProject?.activities?.slice(0, 4).map((activity, index) => (
-                <div key={index} className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm font-medium">{activity.name}</p>
-                    <span className="text-sm font-medium">{activity.progress || 0}%</span>
+              {selectedProject?.activities?.slice(0, 4).map((activity, index) => {
+                const dueDate = getActivityDueDate(activity.id)
+                const progress = calculateActivityProgress(activity.id)
+                const activityTasks = selectedProject.tasks.filter((task) => task.activityId === activity.id)
+
+                return (
+                  <div key={index} className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-medium">{activity.name}</p>
+                      <span className="text-sm font-medium">
+                        {progress}% ({activityTasks.filter((t) => t.status === "Completed").length}/
+                        {activityTasks.length} tasks)
+                      </span>
+                    </div>
+                    <Progress value={progress} className="h-2" />
+                    <div className="text-xs text-muted-foreground">
+                      <span>Due: {dueDate ? dueDate.toLocaleDateString() : "No tasks"}</span>
+                    </div>
                   </div>
-                  <Progress value={activity.progress || 0} className="h-2" />
-                  <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>Due: {new Date(activity.endDate).toLocaleDateString()}</span>
-                    <span>{activity.assignedTo ? `Assigned to: ${activity.assignedTo}` : "Unassigned"}</span>
-                  </div>
-                </div>
-              ))}
+                )
+              })}
 
               {(!selectedProject?.activities || selectedProject.activities.length === 0) && (
                 <div className="text-center py-4 text-muted-foreground">

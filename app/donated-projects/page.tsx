@@ -27,7 +27,6 @@ export default function DonatedProjectsPage() {
 
   useEffect(() => {
     async function fetchDonatedProjects() {
-      if (!user) return
 
       try {
         setLoading(true)
@@ -80,7 +79,7 @@ export default function DonatedProjectsPage() {
     }
 
     fetchDonatedProjects()
-  }, [user, showError])
+  }, [showError])
 
   // Format currency
   const formatCurrency = (amount: number) => {

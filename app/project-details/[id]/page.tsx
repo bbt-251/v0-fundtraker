@@ -19,6 +19,8 @@ import { getUserProfile } from "@/services/user-service"
 import { ProjectDonations } from "@/components/project-donations"
 import GanttChart from "@/components/ui/ganttChart"
 import { RiskMatrixTab } from "@/components/risk-matrix-tab"
+// Import useAuth hook
+import { useAuth } from "@/contexts/auth-context"
 
 export default function ProjectDetailsPage() {
   const { id } = useParams()
@@ -32,6 +34,8 @@ export default function ProjectDetailsPage() {
   // Add owner state in the component
   const [owner, setOwner] = useState<{ name: string; email: string | null } | null>(null)
   const [activeRiskTab, setActiveRiskTab] = useState("list")
+  // Get user profile from auth context
+  const { userProfile } = useAuth()
 
   useEffect(() => {
     // Modify the fetchProject function inside useEffect to also fetch the owner's information
@@ -153,15 +157,21 @@ export default function ProjectDetailsPage() {
   const progressPercentage =
     totalProjectCost > 0 ? Math.min(100, Math.round(((project.donations || 0) / totalProjectCost) * 100)) : 0
 
+  // Check if user is a donor
+  const isDonor = userProfile?.role === "Donor"
+
   return (
     <div className="container mx-auto py-8">
       <div className="mb-6 flex items-center justify-between">
-        <Link href="/donor-dashboard">
+        <Link href="/dashboard">
           <Button variant="outline">← Back to Projects</Button>
         </Link>
-        <Link href={`/donate/${project.id}`}>
-          <Button>Donate Now</Button>
-        </Link>
+        {/* Only show Donate Now button for users with Donor role */}
+        {isDonor && (
+          <Link href={`/donate/${project.id}`}>
+            <Button>Donate Now</Button>
+          </Link>
+        )}
       </div>
 
       {/* Project Header */}
@@ -566,7 +576,7 @@ export default function ProjectDetailsPage() {
                   <button
                     onClick={() => setActivePlanningTab("ganttChart")}
                     className={`pb-2 px-1 ${
-                      activePlanningTab === "decisionGates"
+                      activePlanningTab === "ganttChart"
                         ? "border-b-2 border-blue-500 text-blue-600 dark:text-blue-400"
                         : "text-gray-500 dark:text-gray-400"
                     }`}

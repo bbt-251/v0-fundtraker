@@ -1,295 +1,197 @@
 "use client"
 
 import type React from "react"
-import { createContext, useContext, useEffect, useState } from "react"
-import { useRouter, usePathname } from "next/navigation"
-import type { UserProfile, UserRole } from "@/types/user"
-import { LoadingAnimation } from "@/components/loading-animation"
 
-// Import Firebase modules
-import { initializeApp, getApps } from "firebase/app"
+import { createContext, useContext, useEffect, useState } from "react"
+import { auth, db } from "@/lib/firebase/firebase"
 import {
-  getAuth,
   type User,
-  onAuthStateChanged,
   createUserWithEmailAndPassword,
+  onAuthStateChanged,
   signInWithEmailAndPassword,
-  signOut as firebaseSignOut,
-  sendPasswordResetEmail,
+  signOut,
+  updateProfile,
 } from "firebase/auth"
-import { firebaseConfig } from "@/lib/firebase/config"
-import { createUserProfile, getUserProfile } from "@/services/user-service"
+import { doc, getDoc, setDoc } from "firebase/firestore"
+import type { UserProfile } from "@/types/user"
 
 interface AuthContextType {
   user: User | null
   userProfile: UserProfile | null
   loading: boolean
-  signUp: (email: string, password: string, role: UserRole) => Promise<void>
+  error: string | null
+  signUp: (email: string, password: string, displayName: string) => Promise<void>
   signIn: (email: string, password: string) => Promise<void>
-  signOut: () => Promise<void>
-  resetPassword: (email: string) => Promise<void>
+  logout: () => Promise<void>
+  updateUserProfile: (profile: Partial<UserProfile>) => Promise<void>
 }
 
-// Create a default context value
-const defaultContextValue: AuthContextType = {
+const AuthContext = createContext<AuthContextType>({
   user: null,
   userProfile: null,
   loading: true,
-  signUp: async () => {
-    throw new Error("AuthProvider not initialized")
-  },
-  signIn: async () => {
-    throw new Error("AuthProvider not initialized")
-  },
-  signOut: async () => {
-    throw new Error("AuthProvider not initialized")
-  },
-  resetPassword: async () => {
-    throw new Error("AuthProvider not initialized")
-  },
-}
+  error: null,
+  signUp: async () => {},
+  signIn: async () => {},
+  logout: async () => {},
+  updateUserProfile: async () => {},
+})
 
-const AuthContext = createContext<AuthContextType>(defaultContextValue)
+export const useAuth = () => useContext(AuthContext)
 
-// Initialize Firebase app once
-let firebaseInitialized = false
-let app: any = null
-let auth: any = null
-
-const initializeFirebaseApp = () => {
-  if (firebaseInitialized) return { app, auth }
-
-  try {
-    // Check if we're in a browser environment
-    if (typeof window === "undefined") {
-      console.log("Not initializing Firebase in server context")
-      return { app: null, auth: null }
-    }
-
-    if (!getApps().length) {
-      app = initializeApp(firebaseConfig)
-    } else {
-      app = getApps()[0]
-    }
-
-    auth = getAuth(app)
-    firebaseInitialized = true
-    console.log("Firebase initialized successfully")
-    return { app, auth }
-  } catch (error) {
-    console.error("Error initializing Firebase:", error)
-    return { app: null, auth: null }
-  }
-}
-
-// Initialize Firebase on module load if in browser
-if (typeof window !== "undefined") {
-  initializeFirebaseApp()
-}
-
-export function AuthProvider({ children }: { children: React.ReactNode }) {
+export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null)
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
-  const [isClient, setIsClient] = useState(false)
-  const router = useRouter()
-  const pathname = usePathname()
+  const [error, setError] = useState<string | null>(null)
 
-  // Check if we're on the client side
+  // Listen for auth state changes
   useEffect(() => {
-    setIsClient(true)
+    console.log("Setting up auth state listener...")
+    const unsubscribe = onAuthStateChanged(
+      auth,
+      async (user) => {
+        console.log("Auth state changed:", user ? `User ${user.uid} logged in` : "No user")
+        setUser(user)
+
+        if (user) {
+          try {
+            // Fetch user profile from Firestore
+            const userDoc = await getDoc(doc(db, "users", user.uid))
+            if (userDoc.exists()) {
+              setUserProfile(userDoc.data() as UserProfile)
+            } else {
+              console.log("No user profile found, creating default profile")
+              // Create a default profile if none exists
+              const defaultProfile: UserProfile = {
+                uid: user.uid,
+                displayName: user.displayName || "",
+                email: user.email || "",
+                role: "user",
+                createdAt: new Date().toISOString(),
+              }
+              await setDoc(doc(db, "users", user.uid), defaultProfile)
+              setUserProfile(defaultProfile)
+            }
+          } catch (err) {
+            console.error("Error fetching user profile:", err)
+            setError("Failed to load user profile")
+          }
+        } else {
+          setUserProfile(null)
+        }
+
+        setLoading(false)
+      },
+      (error) => {
+        console.error("Auth state change error:", error)
+        setError(error.message)
+        setLoading(false)
+      },
+    )
+
+    // Cleanup subscription
+    return () => unsubscribe()
   }, [])
 
-  // Initialize Firebase and set up auth state listener
-  useEffect(() => {
-    if (!isClient) return
-
-    let unsubscribe: any = null
-
-    const setupAuthListener = async () => {
-      try {
-        // Make sure Firebase is initialized
-        const { auth } = initializeFirebaseApp()
-
-        if (!auth) {
-          console.error("Auth is not available")
-          setLoading(false)
-          return
-        }
-
-        // Set up auth state listener
-        unsubscribe = onAuthStateChanged(
-          auth,
-          async (user) => {
-            setUser(user)
-
-            // Fetch user profile if user is logged in
-            if (user) {
-              try {
-                const profile = await getUserProfile(user.uid)
-                setUserProfile(profile)
-              } catch (error) {
-                console.error("Error fetching user profile:", error)
-                setUserProfile(null)
-              }
-            } else {
-              setUserProfile(null)
-            }
-
-            setLoading(false)
-          },
-          (error) => {
-            console.error("Auth state change error:", error)
-            setLoading(false)
-          },
-        )
-      } catch (error) {
-        console.error("Error setting up auth listener:", error)
-        setLoading(false)
-      }
-    }
-
-    setupAuthListener()
-
-    // Clean up the auth state listener
-    return () => {
-      if (unsubscribe) {
-        unsubscribe()
-      }
-    }
-  }, [isClient])
-
-  // Handle redirects based on auth state
-  useEffect(() => {
-    if (isClient && !loading) {
-      if (user) {
-        // If user is authenticated and on auth pages, redirect to appropriate dashboard
-        if (pathname === "/login" || pathname === "/signup" || pathname === "/") {
-          // Redirect based on user role
-          if (userProfile?.role === "Fund Custodian") {
-            router.push("/fund-custodian")
-          } else {
-            router.push("/dashboard")
-          }
-        }
-      } else {
-        // If user is not authenticated and trying to access protected routes
-        if (
-          pathname.startsWith("/dashboard") ||
-          pathname.startsWith("/projects") ||
-          pathname.startsWith("/account") ||
-          pathname.startsWith("/my-account") ||
-          pathname.startsWith("/users") ||
-          pathname.startsWith("/donor-dashboard") ||
-          pathname.startsWith("/donated-projects") ||
-          pathname.startsWith("/fund-custodian") ||
-          pathname.startsWith("/all-projects")
-        ) {
-          router.push("/login")
-        }
-      }
-    }
-  }, [user, userProfile, loading, router, isClient, pathname])
-
-  // Helper function to ensure Firebase auth is initialized
-  const getFirebaseAuth = async () => {
-    if (!isClient) {
-      throw new Error("Cannot use Firebase on the server")
-    }
-
-    // Initialize Firebase if not already initialized
-    const { auth } = initializeFirebaseApp()
-
-    if (!auth) {
-      throw new Error("Authentication service is not available")
-    }
-
-    return auth
-  }
-
-  const signUp = async (email: string, password: string, role: UserRole) => {
+  // Sign up function
+  const signUp = async (email: string, password: string, displayName: string) => {
     try {
-      const auth = await getFirebaseAuth()
+      setLoading(true)
+      setError(null)
 
-      // Create the user in Firebase Auth
+      // Create user in Firebase Auth
       const userCredential = await createUserWithEmailAndPassword(auth, email, password)
 
-      // Create the user profile in Firestore
-      await createUserProfile(userCredential.user.uid, email, role)
-
-      // Redirect based on role
-      if (role === "Donor") {
-        router.push("/donor-dashboard")
-      } else {
-        router.push("/dashboard")
+      // Update display name
+      if (auth.currentUser) {
+        await updateProfile(auth.currentUser, { displayName })
       }
-    } catch (error: any) {
-      console.error("Error during sign up:", error)
-      throw new Error(error.message || "Failed to sign up")
+
+      // Create user profile in Firestore
+      const newProfile: UserProfile = {
+        uid: userCredential.user.uid,
+        displayName,
+        email,
+        role: "user",
+        createdAt: new Date().toISOString(),
+      }
+
+      await setDoc(doc(db, "users", userCredential.user.uid), newProfile)
+      setUserProfile(newProfile)
+    } catch (err: any) {
+      console.error("Sign up error:", err)
+      setError(err.message)
+      throw err
+    } finally {
+      setLoading(false)
     }
   }
 
+  // Sign in function
   const signIn = async (email: string, password: string) => {
     try {
-      const auth = await getFirebaseAuth()
-
+      setLoading(true)
+      setError(null)
       await signInWithEmailAndPassword(auth, email, password)
-      // Redirect will happen in the useEffect based on user role
-    } catch (error: any) {
-      console.error("Error during sign in:", error)
-      throw new Error(error.message || "Failed to sign in")
+    } catch (err: any) {
+      console.error("Sign in error:", err)
+      setError(err.message)
+      throw err
+    } finally {
+      setLoading(false)
     }
   }
 
-  const signOut = async () => {
+  // Logout function
+  const logout = async () => {
     try {
-      const auth = await getFirebaseAuth()
-
-      await firebaseSignOut(auth)
-      router.push("/login")
-    } catch (error: any) {
-      console.error("Error during sign out:", error)
-      throw new Error(error.message || "Failed to sign out")
+      setLoading(true)
+      setError(null)
+      await signOut(auth)
+    } catch (err: any) {
+      console.error("Logout error:", err)
+      setError(err.message)
+      throw err
+    } finally {
+      setLoading(false)
     }
   }
 
-  const resetPassword = async (email: string) => {
+  // Update user profile
+  const updateUserProfile = async (profile: Partial<UserProfile>) => {
     try {
-      const auth = await getFirebaseAuth()
+      if (!user) throw new Error("No user logged in")
 
-      await sendPasswordResetEmail(auth, email)
-    } catch (error: any) {
-      console.error("Error during password reset:", error)
-      throw new Error(error.message || "Failed to reset password")
+      setLoading(true)
+      setError(null)
+
+      // Update profile in Firestore
+      const userRef = doc(db, "users", user.uid)
+      await setDoc(userRef, profile, { merge: true })
+
+      // Update local state
+      const updatedProfile = { ...userProfile, ...profile } as UserProfile
+      setUserProfile(updatedProfile)
+    } catch (err: any) {
+      console.error("Update profile error:", err)
+      setError(err.message)
+      throw err
+    } finally {
+      setLoading(false)
     }
   }
 
-  const contextValue: AuthContextType = {
+  const value = {
     user,
     userProfile,
     loading,
+    error,
     signUp,
     signIn,
-    signOut,
-    resetPassword,
+    logout,
+    updateUserProfile,
   }
 
-  // Show loading animation while initializing Firebase
-  if (loading && isClient) {
-    return (
-      <div className="flex h-screen w-screen items-center justify-center">
-        <LoadingAnimation />
-      </div>
-    )
-  }
-
-  return <AuthContext.Provider value={contextValue}>{children}</AuthContext.Provider>
-}
-
-export function useAuth() {
-  const context = useContext(AuthContext)
-  if (!context) {
-    throw new Error("useAuth must be used within an AuthProvider")
-  }
-  return context
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

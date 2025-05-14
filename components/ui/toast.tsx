@@ -105,6 +105,9 @@ function useToast() {
     toasts,
     addToast,
     dismissToast,
+    error: (title: string, description?: string) => addToast(title, "error", description),
+    success: (title: string, description?: string) => addToast(title, "success", description),
+    info: (title: string, description?: string) => addToast(title, "info", description),
   }
 }
 
@@ -119,3 +122,6 @@ export {
   ToastProvider,
   useToast,
 }
+
+export type ToastProps = ToastPrimitives.ToastProps
+export type ToastActionElement = React.ReactNode

@@ -7,11 +7,13 @@ import { BlockersAndDelays } from "@/components/blockers-and-delays"
 import { Queries } from "@/components/queries"
 import { IssueLog } from "@/components/issue-log"
 import { Risks } from "@/components/risks"
+import { TeamMeetingNotes } from "@/components/team-meeting-notes"
 import { getAnnouncedProjects, getUserProjects } from "@/services/project-service"
 import { message } from "antd"
 import { LoadingAnimation } from "@/components/loading-animation"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useAuth } from "@/contexts/auth-context"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 export default function MonitorAndTrackPage() {
   const [projects, setProjects] = useState<any[]>([])
@@ -19,6 +21,7 @@ export default function MonitorAndTrackPage() {
   const [selectedProjectId, setSelectedProjectId] = useState<string>("")
   const [loading, setLoading] = useState(true)
   const [selectedDate, setSelectedDate] = useState<Date>(new Date())
+  const [activeTab, setActiveTab] = useState("daily")
   const { user } = useAuth()
 
   useEffect(() => {
@@ -89,18 +92,29 @@ export default function MonitorAndTrackPage() {
           <LoadingAnimation />
         </div>
       ) : selectedProjectId ? (
-        <>
-          <DailyActivityTracking
-            initialDate={selectedDate}
-            onDateChange={handleDateChange}
-            projectId={selectedProjectId}
-          />
-          <UpcomingDeliverables projects={projects} selectedDate={selectedDate} projectId={selectedProjectId} />
-          <BlockersAndDelays projectId={selectedProjectId} />
-          <Queries projectId={selectedProjectId} />
-          <IssueLog projectId={selectedProjectId} />
-          <Risks projectId={selectedProjectId} />
-        </>
+        <Tabs defaultValue="daily" value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="grid w-full grid-cols-2 mb-8">
+            <TabsTrigger value="daily">Daily</TabsTrigger>
+            <TabsTrigger value="weekly">Weekly</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="daily" className="space-y-8">
+            <DailyActivityTracking
+              initialDate={selectedDate}
+              onDateChange={handleDateChange}
+              projectId={selectedProjectId}
+            />
+            <UpcomingDeliverables projects={projects} selectedDate={selectedDate} projectId={selectedProjectId} />
+            <BlockersAndDelays projectId={selectedProjectId} />
+            <Queries projectId={selectedProjectId} />
+            <IssueLog projectId={selectedProjectId} />
+            <Risks projectId={selectedProjectId} />
+          </TabsContent>
+
+          <TabsContent value="weekly" className="space-y-8">
+            <TeamMeetingNotes projectId={selectedProjectId} />
+          </TabsContent>
+        </Tabs>
       ) : (
         <div className="text-center py-12 bg-gray-50 rounded-lg border">
           <p className="text-lg text-gray-500">Please select a project to view monitoring data</p>

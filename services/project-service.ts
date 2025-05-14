@@ -155,8 +155,12 @@ export async function updateProjectStatus(
 // Get all announced projects
 export async function getAnnouncedProjects(): Promise<Project[]> {
   try {
+    console.log("Fetching announced projects from Firebase...")
     const q = query(projectsCollection, where("isAnnouncedToDonors", "==", true))
     const querySnapshot = await getDocs(q)
+
+    console.log(`Found ${querySnapshot.docs.length} announced projects`)
+
     return querySnapshot.docs.map((doc) => ({
       id: doc.id,
       ...doc.data(),

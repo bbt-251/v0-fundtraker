@@ -5,12 +5,12 @@ import { useAuth } from "@/contexts/auth-context"
 import { getAnnouncedProjects } from "@/services/project-service"
 import { getSavedProjects } from "@/services/user-service"
 import type { Project } from "@/types/project"
-import { Search, TrendingUp, Bookmark } from "lucide-react"
+import { Search, TrendingUp, Bookmark, RefreshCw } from "lucide-react"
 import { ProjectCard } from "@/components/project-card"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
-import { useToast } from "@/components/ui/toast"
+import { toast } from "@/components/ui/use-toast"
 
 // Define project categories
 const CATEGORIES = [
@@ -25,8 +25,7 @@ const CATEGORIES = [
 ]
 
 export default function DonorDashboard() {
-  const { user, userProfile } = useAuth()
-  const { error: showError } = useToast()
+  const { user } = useAuth()
   const [projects, setProjects] = useState<Project[]>([])
   const [filteredProjects, setFilteredProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
@@ -35,33 +34,77 @@ export default function DonorDashboard() {
   const [urgentOnly, setUrgentOnly] = useState(false)
   const [activeTab, setActiveTab] = useState("all")
   const [savedProjectIds, setSavedProjectIds] = useState<string[]>([])
+  const [error, setError] = useState<string | null>(null)
+  const [retryCount, setRetryCount] = useState(0)
 
   // Fetch announced projects and saved projects
   useEffect(() => {
+    let isMounted = true
+
     async function fetchProjects() {
+      if (!isMounted) return
+
       try {
         setLoading(true)
+        setError(null)
+        console.log("Fetching projects...")
+
+        // Fetch announced projects
         const announcedProjects = await getAnnouncedProjects()
-        setProjects(announcedProjects)
-        setFilteredProjects(announcedProjects)
+
+        if (!isMounted) return
+
+        console.log("Fetched projects:", announcedProjects?.length || 0)
+
+        // Set projects state
+        setProjects(announcedProjects || [])
+        setFilteredProjects(announcedProjects || [])
 
         // Fetch saved projects if user is logged in
-        if (user) {
-          const savedIds = await getSavedProjects(user.uid)
-          setSavedProjectIds(savedIds)
+        if (user?.uid) {
+          try {
+            const savedIds = await getSavedProjects(user.uid)
+            if (isMounted) {
+              setSavedProjectIds(savedIds || [])
+            }
+          } catch (saveError) {
+            console.error("Error fetching saved projects:", saveError)
+            // Don't fail the whole component if just saved projects fail
+          }
         }
       } catch (error: any) {
-        showError(error.message || "Failed to fetch projects")
+        console.error("Error fetching projects:", error)
+        if (isMounted) {
+          setError("Failed to fetch projects. Please try again later.")
+          // Show toast notification
+          toast({
+            title: "Error",
+            description: "Failed to fetch projects. Please try again later.",
+            variant: "destructive",
+          })
+        }
       } finally {
-        setLoading(false)
+        if (isMounted) {
+          setLoading(false)
+        }
       }
     }
 
     fetchProjects()
-  }, [showError, user])
+
+    // Cleanup function to prevent state updates after unmount
+    return () => {
+      isMounted = false
+    }
+  }, [user, retryCount])
 
   // Filter projects based on search, categories, and urgency
   useEffect(() => {
+    if (!projects.length) {
+      setFilteredProjects([])
+      return
+    }
+
     let result = [...projects]
 
     // Filter by search query
@@ -69,7 +112,7 @@ export default function DonorDashboard() {
       const query = searchQuery.toLowerCase()
       result = result.filter(
         (project) =>
-          project.name.toLowerCase().includes(query) ||
+          (project.name && project.name.toLowerCase().includes(query)) ||
           (project.description && project.description.toLowerCase().includes(query)) ||
           (project.location && project.location.toLowerCase().includes(query)),
       )
@@ -77,7 +120,7 @@ export default function DonorDashboard() {
 
     // Filter by categories
     if (selectedCategories.length > 0) {
-      result = result.filter((project) => selectedCategories.includes(project.category))
+      result = result.filter((project) => project.category && selectedCategories.includes(project.category))
     }
 
     // Filter by urgency (placeholder - we'll need to add an urgency field to projects)
@@ -111,6 +154,11 @@ export default function DonorDashboard() {
     } else {
       setSavedProjectIds((prev) => prev.filter((id) => id !== projectId))
     }
+  }
+
+  // Handle retry
+  const handleRetry = () => {
+    setRetryCount((prev) => prev + 1)
   }
 
   return (
@@ -202,13 +250,24 @@ export default function DonorDashboard() {
 
             {/* Projects Grid */}
             {loading ? (
-              <div className="flex justify-center items-center h-64">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+              <div className="flex flex-col justify-center items-center h-64">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
+                <p className="text-muted-foreground">Loading projects...</p>
+              </div>
+            ) : error ? (
+              <div className="text-center py-16">
+                <p className="text-red-500 dark:text-red-400 mb-4">{error}</p>
+                <Button variant="outline" onClick={handleRetry} className="flex items-center gap-2">
+                  <RefreshCw className="h-4 w-4" />
+                  Try Again
+                </Button>
               </div>
             ) : filteredProjects.length === 0 ? (
               <div className="text-center py-16">
                 <p className="text-gray-500 dark:text-gray-400">
-                  No projects match your current filters. Try adjusting your search criteria.
+                  {projects.length === 0
+                    ? "No projects are currently available."
+                    : "No projects match your current filters. Try adjusting your search criteria."}
                 </p>
               </div>
             ) : (
