@@ -12,6 +12,7 @@ import { DollarSign, Clock } from "lucide-react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { formatDistanceToNow } from "date-fns"
+import { FundAllocationModal } from "@/components/fund-allocation-modal"
 
 interface DonationsByProject {
   project: Project
@@ -27,6 +28,7 @@ export default function DonatedProjectsPage() {
 
   useEffect(() => {
     async function fetchDonatedProjects() {
+      if (!user) return
 
       try {
         setLoading(true)
@@ -75,11 +77,12 @@ export default function DonatedProjectsPage() {
         showError(error.message || "Failed to fetch donated projects")
       } finally {
         setLoading(false)
+        console.log("Helloo")
       }
     }
 
     fetchDonatedProjects()
-  }, [showError])
+  }, [user])
 
   // Format currency
   const formatCurrency = (amount: number) => {
@@ -97,6 +100,13 @@ export default function DonatedProjectsPage() {
 
     const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp)
     return formatDistanceToNow(date, { addSuffix: true })
+  }
+
+  // Calculate percentage of donation to project goal
+  const calculatePercentage = (amount: number, goal: number) => {
+    if (!goal || goal === 0) return "N/A"
+    const percentage = (amount / goal) * 100
+    return `${percentage.toFixed(2)}%`
   }
 
   return (
@@ -154,6 +164,12 @@ export default function DonatedProjectsPage() {
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                               Message
                             </th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                              Project Cost
+                            </th>
+                            <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                              Fund Allocation
+                            </th>
                           </tr>
                         </thead>
                         <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
@@ -170,6 +186,16 @@ export default function DonatedProjectsPage() {
                               </td>
                               <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">
                                 {donation.message || "No message"}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                                {calculatePercentage(donation.amount, project.goal)}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-center">
+                                <FundAllocationModal
+                                  donationId={donation.id}
+                                  projectId={project.id}
+                                  amount={donation.amount}
+                                />
                               </td>
                             </tr>
                           ))}
