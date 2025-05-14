@@ -1302,7 +1302,7 @@ export const getFundReleaseRequests = async (projectId: string): Promise<FundRel
 }
 
 // Function to get projects managed by a specific user
-export const getProjectsByManager = async (managerId: string): Promise<Project[]> {
+export const getProjectsByManager = async (managerId: string): Promise<Project[]> => {
   try {
     const projectsRef = collection(db, "projects")
     const q = query(projectsRef, where("projectManagerId", "==", managerId))
@@ -1319,7 +1319,7 @@ export const getProjectsByManager = async (managerId: string): Promise<Project[]
 }
 
 // Function to get projects owned by a specific user
-export const getProjectsByOwner = async (ownerId: string): Promise<Project[]> {
+export const getProjectsByOwner = async (ownerId: string): Promise<Project[]> => {
   try {
     const projectsRef = collection(db, "projects")
     const q = query(projectsRef, where("userId", "==", ownerId))
