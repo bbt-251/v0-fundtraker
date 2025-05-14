@@ -1,4 +1,4 @@
-import { db } from "@/lib/firebase/firebase"
+import { db, storage } from "@/lib/firebase/firebase"
 import {
   collection,
   doc,
@@ -55,6 +55,14 @@ export async function getProjects(userId: string): Promise<Project[]> {
     console.error("Error getting projects:", error)
     throw new Error("Failed to fetch projects")
   }
+}
+
+// Get projects created by a user (alias for getProjects for clarity)
+export async function getUserProjects(userId: string): Promise<Project[]> {
+  if (!userId) {
+    return []
+  }
+  return getProjects(userId)
 }
 
 // Get project by ID
@@ -1294,7 +1302,7 @@ export const getFundReleaseRequests = async (projectId: string): Promise<FundRel
 }
 
 // Function to get projects managed by a specific user
-export const getProjectsByManager = async (managerId: string): Promise<Project[]> => {
+export const getProjectsByManager = async (managerId: string): Promise<Project[]> {
   try {
     const projectsRef = collection(db, "projects")
     const q = query(projectsRef, where("projectManagerId", "==", managerId))
@@ -1311,7 +1319,7 @@ export const getProjectsByManager = async (managerId: string): Promise<Project[]
 }
 
 // Function to get projects owned by a specific user
-export const getProjectsByOwner = async (ownerId: string): Promise<Project[]> => {
+export const getProjectsByOwner = async (ownerId: string): Promise<Project[]> {
   try {
     const projectsRef = collection(db, "projects")
     const q = query(projectsRef, where("userId", "==", ownerId))
@@ -1413,7 +1421,7 @@ export const createScheduledTransfer = async (
     }
 
     // Find the recipient (fund account)
-    const fundAccount = projectData.fundAccounts?.find((account) => account.id === recipientId)
+    const fundAccount = projectData.fundAccounts?.find((a) => a.id === recipientId)
 
     if (!fundAccount) {
       throw new Error("Fund account not found")

@@ -6,10 +6,18 @@ import type { TeamMember, TeamMemberFormData } from "@/types/team-member"
 const teamMembersCollection = collection(db, "teamMembers")
 
 // Get team members by owner ID
-export async function getTeamMembers(ownerId: string): Promise<TeamMember[]> {
+export async function getTeamMembers(ownerId?: string): Promise<TeamMember[]> {
   try {
-    // Use only the where clause without orderBy to avoid needing a composite index
-    const q = query(teamMembersCollection, where("ownerId", "==", ownerId))
+    let q
+
+    // Only use the where clause if ownerId is defined
+    if (ownerId) {
+      q = query(teamMembersCollection, where("ownerId", "==", ownerId))
+    } else {
+      // If ownerId is undefined, get all team members
+      q = query(teamMembersCollection)
+    }
+
     const querySnapshot = await getDocs(q)
 
     // Sort the results in memory after fetching
@@ -26,7 +34,8 @@ export async function getTeamMembers(ownerId: string): Promise<TeamMember[]> {
     })
   } catch (error) {
     console.error("Error getting team members:", error)
-    throw new Error("Failed to fetch team members")
+    // Return empty array instead of throwing to prevent cascading failures
+    return []
   }
 }
 
@@ -98,10 +107,18 @@ export async function deleteTeamMember(id: string): Promise<void> {
 }
 
 // Also update the getTeamMembersByProject function to avoid the same issue
-export async function getTeamMembersByProject(projectId: string): Promise<TeamMember[]> {
+export async function getTeamMembersByProject(projectId?: string): Promise<TeamMember[]> {
   try {
-    // Use only the where clause without orderBy
-    const q = query(teamMembersCollection, where("projectId", "==", projectId))
+    let q
+
+    // Only use the where clause if projectId is defined
+    if (projectId) {
+      q = query(teamMembersCollection, where("projectId", "==", projectId))
+    } else {
+      // If projectId is undefined, get all team members
+      q = query(teamMembersCollection)
+    }
+
     const querySnapshot = await getDocs(q)
 
     // Sort the results in memory
@@ -118,6 +135,7 @@ export async function getTeamMembersByProject(projectId: string): Promise<TeamMe
     })
   } catch (error) {
     console.error("Error getting team members by project:", error)
-    throw new Error("Failed to fetch team members by project")
+    // Return empty array instead of throwing to prevent cascading failures
+    return []
   }
 }

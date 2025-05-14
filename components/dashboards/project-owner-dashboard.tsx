@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useAuth } from "@/contexts/auth-context"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
@@ -22,9 +22,17 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { submitFundReleaseRequest, getFundReleaseRequests, getProjects } from "@/services/project-service"
-import type { Project, FundReleaseRequest,ProjectActivity,ProjectTask,ProjectDeliverable,DecisionGate,HumanResource, MaterialResource } from "@/types/project"
+import type {
+  Project,
+  FundReleaseRequest,
+  ProjectActivity,
+  ProjectTask,
+  ProjectDeliverable,
+  DecisionGate,
+  HumanResource,
+  MaterialResource,
+} from "@/types/project"
 import type { MilestoneBudget } from "@/components/financial-resource-tab"
-import { UpcomingDeliverables } from "@/components/upcoming-deliverables"
 import GanttChart from "../ui/ganttChart"
 import { ActivityDetailModal } from "../modals/activity-detail-modal"
 import { TaskDetailModal } from "../modals/task-detail-modal"
@@ -45,6 +53,33 @@ export default function ProjectOwnerDashboard() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [humanResources, setHumanResources] = useState<HumanResource[]>([])
   const [materialResources, setMaterialResources] = useState<MaterialResource[]>([])
+
+  // Calculate total costs
+  const calculateHumanResourceCost = (resource: HumanResource) => {
+    return resource.costPerDay * resource.quantity * 30 // Assuming 30 days as default
+  }
+
+  const calculateMaterialResourceCost = (resource: MaterialResource) => {
+    // For one-time costs, just return the amount
+    if (resource.costType === "one-time") {
+      return resource.costAmount
+    }
+    // For recurring costs, calculate based on amortization period (assuming 30 days as default)
+    return (resource.costAmount * 30) / resource.amortizationPeriod
+  }
+
+  const calculateHumanResourceTotal = () => {
+    return humanResources.reduce((total, resource) => {
+      return total + calculateHumanResourceCost(resource)
+    }, 0)
+  }
+
+  const calculateMaterialResourceTotal = () => {
+    return materialResources.reduce((total, resource) => {
+      return total + calculateMaterialResourceCost(resource)
+    }, 0)
+  }
+
   const [stats, setStats] = useState({
     totalProjects: 0,
     activeProjects: 0,
@@ -60,6 +95,16 @@ export default function ProjectOwnerDashboard() {
   const [taskModalOpen, setTaskModalOpen] = useState<boolean>(false)
   const [deliverableModalOpen, setDeliverableModalOpen] = useState<boolean>(false)
   const [decisionGateModalOpen, setDecisionGateModalOpen] = useState<boolean>(false)
+  const [resourceUtilizationData, setResourceUtilizationData] = useState<
+    {
+      name: string
+      id: string
+      allocatedPercent: number
+      allocatedAmount: number
+      actualPercent: number
+      actualAmount: number
+    }[]
+  >([])
 
   useEffect(() => {
     const hour = new Date().getHours()
@@ -121,6 +166,7 @@ export default function ProjectOwnerDashboard() {
           if (projectsData[0].id) {
             const requests = await getFundReleaseRequests(projectsData[0].id)
             setFundReleaseRequests(requests)
+            calculateResourceUtilization()
           }
         }
       } catch (error) {
@@ -173,6 +219,7 @@ export default function ProjectOwnerDashboard() {
         try {
           const requests = await getFundReleaseRequests(project.id)
           setFundReleaseRequests(requests)
+          calculateResourceUtilization()
         } catch (error) {
           console.error("Error fetching fund release requests:", error)
           setFundReleaseRequests([])
@@ -180,6 +227,65 @@ export default function ProjectOwnerDashboard() {
       }
     }
   }
+
+  // Calculate resource utilization data for the selected project
+  const calculateResourceUtilization = useCallback(() => {
+    if (!selectedProject) return
+    console.log("selected project for resource utilization: ", selectedProject)
+
+    const activities = selectedProject.activities || []
+    const tasks = selectedProject.tasks || []
+    const humanResources = selectedProject.humanResources || []
+    const materialResources = selectedProject.materialResources || []
+
+    // Calculate total project cost
+    const totalProjectCost = calculateHumanResourceTotal() + calculateMaterialResourceTotal()
+    if (totalProjectCost === 0) return
+
+    const utilizationData = activities.map((activity) => {
+      // Get all tasks for this activity
+      const activityTasks = tasks.filter((task) => task.activityId === activity.id)
+
+      // Calculate total allocated budget for this activity
+      let allocatedAmount = 0
+      activityTasks.forEach((task) => {
+        task.resources.forEach((resource) => {
+          allocatedAmount += resource.totalCost || 0
+        })
+      })
+
+      // Calculate actual spent (completed tasks only)
+      let actualAmount = 0
+      activityTasks
+        .filter((task) => task.status === "Completed")
+        .forEach((task) => {
+          task.resources.forEach((resource) => {
+            actualAmount += resource.totalCost || 0
+          })
+        })
+
+      // Calculate percentages
+      const allocatedPercent = (allocatedAmount / totalProjectCost) * 100
+      const actualPercent = (actualAmount / totalProjectCost) * 100
+
+      return {
+        name: activity.name,
+        id: activity.id,
+        allocatedPercent,
+        allocatedAmount,
+        actualPercent,
+        actualAmount,
+      }
+    })
+
+    console.log("utilizationData: ", utilizationData)
+
+    // Sort by allocated amount descending
+    utilizationData.sort((a, b) => b.allocatedAmount - a.allocatedAmount)
+
+    // Take top 5 activities for display
+    setResourceUtilizationData(utilizationData.slice(0, 5))
+  }, [selectedProject, calculateHumanResourceTotal, calculateMaterialResourceTotal])
 
   // Calculate total budget and percentage
   const totalBudget = milestoneBudgets.reduce((sum, budget) => sum + (budget.budget || 0), 0)
@@ -192,14 +298,6 @@ export default function ProjectOwnerDashboard() {
     { task: "Development", start: 35, duration: 35, complete: 40 },
     { task: "Testing", start: 65, duration: 20, complete: 0 },
     { task: "Deployment", start: 85, duration: 15, complete: 0 },
-  ]
-
-  // Sample data for resource utilization
-  const resourceData = [
-    { name: "Development", allocated: 65, actual: 70 },
-    { name: "Design", allocated: 20, actual: 15 },
-    { name: "QA", allocated: 10, actual: 8 },
-    { name: "Management", allocated: 5, actual: 7 },
   ]
 
   const handleFundReleaseRequest = async (milestoneBudget: MilestoneBudget) => {
@@ -255,32 +353,6 @@ export default function ProjectOwnerDashboard() {
   const getFundReleaseRequestStatus = (milestoneId: string) => {
     const request = fundReleaseRequests.find((request) => request.milestoneId === milestoneId)
     return request ? request.status : null
-  }
-
-  // Calculate total costs
-  const calculateHumanResourceCost = (resource: HumanResource) => {
-    return resource.costPerDay * resource.quantity * 30 // Assuming 30 days as default
-  }
-
-  const calculateMaterialResourceCost = (resource: MaterialResource) => {
-    // For one-time costs, just return the amount
-    if (resource.costType === "one-time") {
-      return resource.costAmount
-    }
-    // For recurring costs, calculate based on amortization period (assuming 30 days as default)
-    return (resource.costAmount * 30) / resource.amortizationPeriod
-  }
-
-  const calculateHumanResourceTotal = () => {
-    return humanResources.reduce((total, resource) => {
-      return total + calculateHumanResourceCost(resource)
-    }, 0)
-  }
-
-  const calculateMaterialResourceTotal = () => {
-    return materialResources.reduce((total, resource) => {
-      return total + calculateMaterialResourceCost(resource)
-    }, 0)
   }
 
   const handleElementClick = (task: any) => {
@@ -429,30 +501,37 @@ export default function ProjectOwnerDashboard() {
             <div className="h-[250px]">
               {/* Resource utilization chart */}
               <div className="space-y-6">
-                {resourceData.map((item, index) => (
-                  <div key={index} className="space-y-2">
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm font-medium">{item.name}</span>
-                      <span className="text-xs text-muted-foreground">
-                        Budget: {item.allocated}% | Actual: {item.actual}%
-                      </span>
+                {resourceUtilizationData.length > 0 ? (
+                  resourceUtilizationData.map((item, index) => (
+                    <div key={index} className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm font-medium">{item.name}</span>
+                        <span className="text-xs text-muted-foreground">
+                          Budget: {item.allocatedPercent.toFixed(1)}% ({formatCurrency(item.allocatedAmount)}) | Actual:{" "}
+                          {item.actualPercent.toFixed(1)}% ({formatCurrency(item.actualAmount)})
+                        </span>
+                      </div>
+                      <div className="relative h-4 w-full bg-muted rounded-full overflow-hidden">
+                        {/* Allocated budget bar */}
+                        <div
+                          className="absolute h-full bg-primary/30 rounded-full"
+                          style={{ width: `${Math.min(item.allocatedPercent, 100)}%` }}
+                        />
+                        {/* Actual usage bar */}
+                        <div
+                          className={`absolute h-full rounded-full ${
+                            item.actualPercent > item.allocatedPercent ? "bg-destructive" : "bg-primary"
+                          }`}
+                          style={{ width: `${Math.min(item.actualPercent, 100)}%` }}
+                        />
+                      </div>
                     </div>
-                    <div className="relative h-4 w-full bg-muted rounded-full overflow-hidden">
-                      {/* Allocated budget bar */}
-                      <div
-                        className="absolute h-full bg-primary/30 rounded-full"
-                        style={{ width: `${item.allocated}%` }}
-                      />
-                      {/* Actual usage bar */}
-                      <div
-                        className={`absolute h-full rounded-full ${
-                          item.actual > item.allocated ? "bg-destructive" : "bg-primary"
-                        }`}
-                        style={{ width: `${item.actual}%` }}
-                      />
-                    </div>
+                  ))
+                ) : (
+                  <div className="text-center py-4 text-muted-foreground">
+                    No activity data available for this project.
                   </div>
-                ))}
+                )}
               </div>
               <div className="flex justify-between items-center mt-6 text-xs text-muted-foreground">
                 <div className="flex items-center gap-2">
@@ -480,16 +559,15 @@ export default function ProjectOwnerDashboard() {
           </CardHeader>
           <CardContent>
             <GanttChart
-              tasks={selectedProject?.tasks??[]}
-              activities={selectedProject?.activities??[]}
-              deliverables={selectedProject?.deliverables??[]}
+              tasks={selectedProject?.tasks ?? []}
+              activities={selectedProject?.activities ?? []}
+              deliverables={selectedProject?.deliverables ?? []}
               decisionGates={selectedProject?.decisionGates ?? []}
               chartLoading={false}
               onElementClick={handleElementClick}
             />
           </CardContent>
         </Card>
-        
 
         {/* Activity Progress */}
         <Card className="mt-6">
@@ -521,9 +599,6 @@ export default function ProjectOwnerDashboard() {
             </div>
           </CardContent>
         </Card>
-
-        {/* Upcoming Deliverables */}
-        <UpcomingDeliverables projects={projects} />
       </div>
 
       {/* Fund Release Workflow */}

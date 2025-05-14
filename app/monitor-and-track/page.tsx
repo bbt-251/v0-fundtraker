@@ -1,0 +1,111 @@
+"use client"
+
+import { useState, useEffect } from "react"
+import { DailyActivityTracking } from "@/components/daily-activity-tracking"
+import { UpcomingDeliverables } from "@/components/upcoming-deliverables"
+import { BlockersAndDelays } from "@/components/blockers-and-delays"
+import { Queries } from "@/components/queries"
+import { IssueLog } from "@/components/issue-log"
+import { Risks } from "@/components/risks"
+import { getAnnouncedProjects, getUserProjects } from "@/services/project-service"
+import { message } from "antd"
+import { LoadingAnimation } from "@/components/loading-animation"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { useAuth } from "@/contexts/auth-context"
+
+export default function MonitorAndTrackPage() {
+  const [projects, setProjects] = useState<any[]>([])
+  const [userProjects, setUserProjects] = useState<any[]>([])
+  const [selectedProjectId, setSelectedProjectId] = useState<string>("")
+  const [loading, setLoading] = useState(true)
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date())
+  const { user } = useAuth()
+
+  useEffect(() => {
+    async function fetchProjects() {
+      try {
+        setLoading(true)
+
+        // Get projects created by the current user
+        const fetchedUserProjects = await getUserProjects(user?.uid)
+        setUserProjects(fetchedUserProjects)
+
+        // Set default selected project if available
+        if (fetchedUserProjects.length > 0) {
+          setSelectedProjectId(fetchedUserProjects[0].id)
+        }
+
+        // Get all announced projects for upcoming deliverables
+        const fetchedProjects = await getAnnouncedProjects()
+        setProjects(fetchedProjects)
+      } catch (error) {
+        console.error("Error fetching projects:", error)
+        message.error("Failed to load projects")
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    if (user?.uid) {
+      fetchProjects()
+    }
+  }, [user])
+
+  const handleDateChange = (date: Date) => {
+    setSelectedDate(date)
+  }
+
+  const handleProjectChange = (projectId: string) => {
+    setSelectedProjectId(projectId)
+  }
+
+  // Get the selected project name for display
+  const selectedProject = userProjects.find((project) => project.id === selectedProjectId)
+  const selectedProjectName = selectedProject ? selectedProject.name : "Select a project"
+
+  return (
+    <div className="container mx-auto py-6 space-y-8">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <h1 className="text-3xl font-bold">Monitor & Track</h1>
+
+        <div className="w-full md:w-80">
+          <Select value={selectedProjectId} onValueChange={handleProjectChange}>
+            <SelectTrigger>
+              <SelectValue placeholder="Select a project" />
+            </SelectTrigger>
+            <SelectContent>
+              {userProjects.map((project) => (
+                <SelectItem key={project.id} value={project.id}>
+                  {project.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center items-center py-12">
+          <LoadingAnimation />
+        </div>
+      ) : selectedProjectId ? (
+        <>
+          <DailyActivityTracking
+            initialDate={selectedDate}
+            onDateChange={handleDateChange}
+            projectId={selectedProjectId}
+          />
+          <UpcomingDeliverables projects={projects} selectedDate={selectedDate} projectId={selectedProjectId} />
+          <BlockersAndDelays projectId={selectedProjectId} />
+          <Queries projectId={selectedProjectId} />
+          <IssueLog projectId={selectedProjectId} />
+          <Risks projectId={selectedProjectId} />
+        </>
+      ) : (
+        <div className="text-center py-12 bg-gray-50 rounded-lg border">
+          <p className="text-lg text-gray-500">Please select a project to view monitoring data</p>
+        </div>
+      )}
+    </div>
+  )
+}

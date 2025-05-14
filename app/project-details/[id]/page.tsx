@@ -18,6 +18,7 @@ import { getUserProfile } from "@/services/user-service"
 // Import the ProjectDonations component at the top of the file
 import { ProjectDonations } from "@/components/project-donations"
 import GanttChart from "@/components/ui/ganttChart"
+import { RiskMatrixTab } from "@/components/risk-matrix-tab"
 
 export default function ProjectDetailsPage() {
   const { id } = useParams()
@@ -30,6 +31,7 @@ export default function ProjectDetailsPage() {
   const [activeCommunicationTab, setActiveCommunicationTab] = useState("plan")
   // Add owner state in the component
   const [owner, setOwner] = useState<{ name: string; email: string | null } | null>(null)
+  const [activeRiskTab, setActiveRiskTab] = useState("list")
 
   useEffect(() => {
     // Modify the fetchProject function inside useEffect to also fetch the owner's information
@@ -890,75 +892,104 @@ export default function ProjectDetailsPage() {
               )}
 
               {/* Gantt Chart */}
-              {
-                activePlanningTab === "ganttChart" && (
-                  <div>
-                    <GanttChart
-                      tasks={project.tasks}
-                      activities={project.activities}
-                      deliverables={project.deliverables}
-                      decisionGates={project?.decisionGates ?? []}
-                      chartLoading={false}
-                      onElementClick={undefined}
-                    />
-                  </div>
-                )
-              }
+              {activePlanningTab === "ganttChart" && (
+                <div>
+                  <GanttChart
+                    tasks={project.tasks}
+                    activities={project.activities}
+                    deliverables={project.deliverables}
+                    decisionGates={project?.decisionGates ?? []}
+                    chartLoading={false}
+                    onElementClick={undefined}
+                  />
+                </div>
+              )}
             </TabsContent>
 
             {/* Risks Tab */}
             <TabsContent value="risks" className="mt-6">
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Risks</h3>
-                {project.risks && project.risks.length > 0 ? (
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                      <thead className="bg-gray-50 dark:bg-gray-800">
-                        <tr>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                            Name
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                            Description
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                            Probability
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                            Impact
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                            Mitigation Plan
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
-                        {project.risks.map((risk) => (
-                          <tr key={risk.id}>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                              {risk.name}
-                            </td>
-                            <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400 max-w-xs truncate">
-                              {risk.description}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                              {risk.probability}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                              {risk.impact}
-                            </td>
-                            <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400 max-w-xs truncate">
-                              {risk.mitigationPlan}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <p className="text-gray-500 dark:text-gray-400">No risks added yet.</p>
-                )}
+              <div className="mb-4 border-b border-gray-200 dark:border-gray-700">
+                <div className="flex space-x-4">
+                  <button
+                    onClick={() => setActiveRiskTab("list")}
+                    className={`pb-2 px-1 ${
+                      activeRiskTab === "list"
+                        ? "border-b-2 border-blue-500 text-blue-600 dark:text-blue-400"
+                        : "text-gray-500 dark:text-gray-400"
+                    }`}
+                  >
+                    Risk List
+                  </button>
+                  <button
+                    onClick={() => setActiveRiskTab("matrix")}
+                    className={`pb-2 px-1 ${
+                      activeRiskTab === "matrix"
+                        ? "border-b-2 border-blue-500 text-blue-600 dark:text-blue-400"
+                        : "text-gray-500 dark:text-gray-400"
+                    }`}
+                  >
+                    Risk Matrix
+                  </button>
+                </div>
               </div>
+
+              {/* Risk List */}
+              {activeRiskTab === "list" && (
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Risks</h3>
+                  {project.risks && project.risks.length > 0 ? (
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                        <thead className="bg-gray-50 dark:bg-gray-800">
+                          <tr>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                              Name
+                            </th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                              Description
+                            </th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                              Probability
+                            </th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                              Impact
+                            </th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                              Mitigation Plan
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
+                          {project.risks.map((risk) => (
+                            <tr key={risk.id}>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                                {risk.name}
+                              </td>
+                              <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400 max-w-xs truncate">
+                                {risk.description}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                                {risk.probability}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                                {risk.impact}
+                              </td>
+                              <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400 max-w-xs truncate">
+                                {risk.mitigationPlan}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <p className="text-gray-500 dark:text-gray-400">No risks added yet.</p>
+                  )}
+                </div>
+              )}
+
+              {/* Risk Matrix */}
+              {activeRiskTab === "matrix" && <RiskMatrixTab projectId={project.id} risks={project.risks || []} />}
             </TabsContent>
 
             {/* Communication Tab */}

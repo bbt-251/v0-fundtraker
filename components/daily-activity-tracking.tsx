@@ -42,9 +42,14 @@ const priorityOptions: { value: TaskPriority; label: string }[] = [
   { value: "High", label: "High" },
 ]
 
-export function DailyActivityTracking() {
+interface DailyActivityTrackingProps {
+  initialDate?: Date
+  onDateChange?: (date: Date) => void
+}
+
+export function DailyActivityTracking({ initialDate, onDateChange }: DailyActivityTrackingProps) {
   const { toast } = useToast()
-  const [date, setDate] = useState<Date>(new Date())
+  const [date, setDate] = useState<Date>(initialDate || new Date())
   const [assigneeFilter, setAssigneeFilter] = useState<string | null>(null)
   const [priorityFilter, setPriorityFilter] = useState<TaskPriority | null>(null)
   const [statusFilter, setStatusFilter] = useState<TaskStatus | null>(null)
@@ -457,6 +462,17 @@ export function DailyActivityTracking() {
     }
   }
 
+  // Handle date change
+  const handleDateChange = (newDate: Date | null) => {
+    if (newDate) {
+      setDate(newDate)
+      // Call the parent component's onDateChange if provided
+      if (onDateChange) {
+        onDateChange(newDate)
+      }
+    }
+  }
+
   return (
     <div className="space-y-6">
       {/* Antd Message Context Holder */}
@@ -468,11 +484,7 @@ export function DailyActivityTracking() {
         {/* Date Picker */}
         <DatePicker
           date={date}
-          onDateChange={(newDate) => {
-            if (newDate) {
-              setDate(newDate)
-            }
-          }}
+          onDateChange={handleDateChange}
           className="w-[240px]"
           placeholder="Select date"
           format="MMMM DD, YYYY"

@@ -127,7 +127,7 @@ export function AppHeader() {
   )
 }
 
-// Update the getNavItems function to include Team section for Project Owners
+// Update the getNavItems function to include Monitor & Track for Project Owners
 
 function getNavItems(role?: string) {
   // Common route for all roles
@@ -165,8 +165,8 @@ function getNavItems(role?: string) {
         icon: "FolderKanban",
       },
       {
-        title: "Daily Activity",
-        href: "/daily-activity",
+        title: "Monitor & Track",
+        href: "/monitor-and-track",
         icon: "Calendar",
       },
       {

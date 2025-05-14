@@ -1,18 +1,20 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { Calendar, MoreHorizontal, Info } from "lucide-react"
-import { format, isAfter } from "date-fns"
+import { Calendar, MoreHorizontal, Info, CalendarRange } from "lucide-react"
+import { format, isAfter, isBefore, addMonths } from "date-fns"
 import type { Project, ProjectDeliverable } from "@/types/project"
 import { Button as AntButton, Tooltip } from "antd"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Badge } from "@/components/ui/badge"
 
 interface UpcomingDeliverablesProps {
   projects: Project[]
+  selectedDate?: Date
 }
 
-export function UpcomingDeliverables({ projects }: UpcomingDeliverablesProps) {
+export function UpcomingDeliverables({ projects, selectedDate = new Date() }: UpcomingDeliverablesProps) {
   const [upcomingDeliverables, setUpcomingDeliverables] = useState<
     Array<ProjectDeliverable & { projectName: string; projectId: string }>
   >([])
@@ -21,6 +23,9 @@ export function UpcomingDeliverables({ projects }: UpcomingDeliverablesProps) {
     type: "dependent" | "blocked"
     deliverableId: string | null
   }>({ type: "dependent", deliverableId: null })
+
+  // Calculate the end date (1 month from the selected date) using useMemo to prevent unnecessary recalculations
+  const endDate = useMemo(() => addMonths(selectedDate, 1), [selectedDate])
 
   useEffect(() => {
     // Get all deliverables from all projects
@@ -32,8 +37,8 @@ export function UpcomingDeliverables({ projects }: UpcomingDeliverablesProps) {
       })),
     )
 
-    // Filter for upcoming deliverables (due in the next 30 days)
-    const today = new Date()
+    // Filter for upcoming deliverables (due between selected date and 1 month later)
+    console.log("Filtering deliverables between:", selectedDate, "and", endDate)
 
     // Log for debugging
     console.log("Total deliverables found:", allDeliverables.length)
@@ -44,8 +49,14 @@ export function UpcomingDeliverables({ projects }: UpcomingDeliverablesProps) {
 
         try {
           const dueDate = new Date(deliverable.deadline)
-          const isUpcoming = isAfter(dueDate, today)
-          return isUpcoming
+
+          // Check if the due date is after or equal to the selected date
+          // AND before or equal to the end date (selected date + 1 month)
+          const isInDateRange =
+            (isAfter(dueDate, selectedDate) || dueDate.getTime() === selectedDate.getTime()) &&
+            (isBefore(dueDate, endDate) || dueDate.getTime() === endDate.getTime())
+
+          return isInDateRange
         } catch (error) {
           console.error("Error parsing date for deliverable:", deliverable.name, error)
           return false
@@ -57,7 +68,7 @@ export function UpcomingDeliverables({ projects }: UpcomingDeliverablesProps) {
     console.log("Upcoming deliverables after filtering:", upcoming.length)
 
     setUpcomingDeliverables(upcoming)
-  }, [projects])
+  }, [projects, selectedDate, endDate])
 
   // Function to find dependent and blocked tasks for a deliverable
   const findRelatedTasks = (deliverable: ProjectDeliverable & { projectName: string; projectId: string }) => {
@@ -136,8 +147,16 @@ export function UpcomingDeliverables({ projects }: UpcomingDeliverablesProps) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-2xl font-bold">Upcoming Deliverables</CardTitle>
-        <CardDescription>Track deliverables due in the coming days</CardDescription>
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center">
+          <div>
+            <CardTitle className="text-2xl font-bold">Upcoming Deliverables</CardTitle>
+            <CardDescription>Track deliverables due in the coming days</CardDescription>
+          </div>
+          <Badge variant="outline" className="flex items-center gap-1 px-3 py-1 mt-2 sm:mt-0">
+            <CalendarRange className="h-4 w-4 mr-1" />
+            {format(selectedDate, "MMM d, yyyy")} - {format(endDate, "MMM d, yyyy")}
+          </Badge>
+        </div>
       </CardHeader>
       <CardContent>
         <div className="overflow-x-auto">
@@ -253,7 +272,8 @@ export function UpcomingDeliverables({ projects }: UpcomingDeliverablesProps) {
               ) : (
                 <tr>
                   <td colSpan={6} className="py-6 text-center text-muted-foreground">
-                    No upcoming deliverables found
+                    No deliverables due between {format(selectedDate, "MMM d, yyyy")} and{" "}
+                    {format(endDate, "MMM d, yyyy")}
                   </td>
                 </tr>
               )}

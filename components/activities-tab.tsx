@@ -10,7 +10,8 @@ import {
   deleteProjectActivity,
   getProject,
 } from "@/services/project-service"
-import type { ProjectActivity, ProjectTask } from "@/types/project"
+import type { ProjectActivity, ProjectTask, HumanResource, MaterialResource } from "@/types/project"
+import { ActivityTasksModal } from "@/components/modals/activity-tasks-modal"
 
 interface ActivitiesTabProps {
   projectId: string
@@ -19,12 +20,16 @@ interface ActivitiesTabProps {
 export function ActivitiesTab({ projectId }: ActivitiesTabProps) {
   const [activities, setActivities] = useState<ProjectActivity[]>([])
   const [tasks, setTasks] = useState<ProjectTask[]>([])
+  const [humanResources, setHumanResources] = useState<HumanResource[]>([])
+  const [materialResources, setMaterialResources] = useState<MaterialResource[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
   const [activityName, setActivityName] = useState("")
   const [activityDescription, setActivityDescription] = useState("")
   const [isEditing, setIsEditing] = useState(false)
   const [currentActivityId, setCurrentActivityId] = useState<string | null>(null)
+  const [selectedActivity, setSelectedActivity] = useState<ProjectActivity | null>(null)
+  const [isTasksModalOpen, setIsTasksModalOpen] = useState(false)
 
   // Fetch activities when component mounts
   useEffect(() => {
@@ -37,6 +42,8 @@ export function ActivitiesTab({ projectId }: ActivitiesTabProps) {
       const project = await getProject(projectId)
       setActivities(project.activities || [])
       setTasks(project.tasks || [])
+      setHumanResources(project.humanResources || [])
+      setMaterialResources(project.materialResources || [])
     } catch (error: any) {
       setError(error.message || "Failed to fetch activities")
     } finally {
@@ -139,6 +146,11 @@ export function ActivitiesTab({ projectId }: ActivitiesTabProps) {
       currency: "USD",
       minimumFractionDigits: 2,
     }).format(amount)
+  }
+
+  const handleViewTasks = (activity: ProjectActivity) => {
+    setSelectedActivity(activity)
+    setIsTasksModalOpen(true)
   }
 
   return (
@@ -249,6 +261,14 @@ export function ActivitiesTab({ projectId }: ActivitiesTabProps) {
                     </div>
                   </div>
                 </div>
+                <div className="mt-4 flex justify-end">
+                  <button
+                    onClick={() => handleViewTasks(activity)}
+                    className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 text-sm font-medium"
+                  >
+                    View Tasks
+                  </button>
+                </div>
               </Card>
             ))}
           </div>
@@ -260,6 +280,15 @@ export function ActivitiesTab({ projectId }: ActivitiesTabProps) {
           </div>
         )}
       </div>
+      <ActivityTasksModal
+        isOpen={isTasksModalOpen}
+        onClose={() => setIsTasksModalOpen(false)}
+        activity={selectedActivity}
+        projectId={projectId}
+        tasks={tasks}
+        humanResources={humanResources}
+        materialResources={materialResources}
+      />
     </div>
   )
 }

@@ -1,5 +1,7 @@
 "use client"
 
+import type React from "react"
+
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -136,7 +138,7 @@ export default function TeamMembersPage() {
   // Handle select all
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
-      setSelectedMembers(teamMembers.map((member) => member.id))
+      setSelectedMembers(filteredMembers.map((member) => member.id))
     } else {
       setSelectedMembers([])
     }
@@ -151,14 +153,24 @@ export default function TeamMembersPage() {
     }
   }
 
+  // Handle search input change
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchQuery(e.target.value)
+  }
+
+  // Clear search
+  const clearSearch = () => {
+    setSearchQuery("")
+  }
+
   // Filter team members based on search query
   const filteredMembers = teamMembers.filter((member) => {
-    const fullName = `${member.firstName} ${member.lastName}`.toLowerCase()
-    const email = member.email.toLowerCase()
-    const role = member.role.toLowerCase()
-    const query = searchQuery.toLowerCase()
+    if (!searchQuery.trim()) return true
 
-    return fullName.includes(query) || email.includes(query) || role.includes(query)
+    const fullName = `${member.firstName} ${member.lastName}`.toLowerCase()
+    const query = searchQuery.toLowerCase().trim()
+
+    return fullName.includes(query)
   })
 
   // Function to render working day circles
@@ -232,8 +244,8 @@ export default function TeamMembersPage() {
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1">
               <Users2 className="h-5 w-5 text-gray-500" />
-              <span className="text-xl font-medium">{teamMembers.length}</span>
-              <span className="text-sm text-muted-foreground">Team Members</span>
+              <span className="text-xl font-medium">{filteredMembers.length}</span>
+              <span className="text-sm text-muted-foreground">{searchQuery ? "Matching Members" : "Team Members"}</span>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -241,11 +253,20 @@ export default function TeamMembersPage() {
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
                 type="search"
-                placeholder="Search team members..."
+                placeholder="Search by name..."
                 className="w-[300px] pl-8"
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={handleSearchChange}
               />
+              {searchQuery && (
+                <button
+                  className="absolute right-2.5 top-2.5 text-gray-400 hover:text-gray-600"
+                  onClick={clearSearch}
+                  aria-label="Clear search"
+                >
+                  ×
+                </button>
+              )}
             </div>
             <TooltipProvider>
               <Tooltip>
@@ -271,7 +292,7 @@ export default function TeamMembersPage() {
           <div className="grid grid-cols-[28px_2fr_1.5fr_1.5fr_2fr_1fr_40px] items-center gap-4 border-b p-4 font-medium">
             <Checkbox
               id="select-all"
-              checked={selectedMembers.length === teamMembers.length && teamMembers.length > 0}
+              checked={selectedMembers.length === filteredMembers.length && filteredMembers.length > 0}
               onCheckedChange={(checked) => handleSelectAll(!!checked)}
             />
             <div>NAME</div>
@@ -286,7 +307,18 @@ export default function TeamMembersPage() {
             <div className="p-8 text-center">Loading team members...</div>
           ) : filteredMembers.length === 0 ? (
             <div className="p-8 text-center text-muted-foreground">
-              {searchQuery ? "No team members match your search" : "No team members found. Add your first team member!"}
+              {searchQuery ? (
+                <>
+                  No team members match your search "{searchQuery}"
+                  <div className="mt-2">
+                    <Button variant="outline" size="sm" onClick={clearSearch}>
+                      Clear Search
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                "No team members found. Add your first team member!"
+              )}
             </div>
           ) : (
             filteredMembers.map((member) => (
