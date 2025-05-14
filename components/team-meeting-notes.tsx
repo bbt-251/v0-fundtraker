@@ -334,7 +334,7 @@ export function TeamMeetingNotes({ projectId }: TeamMeetingNotesProps) {
             projectId={projectId}
             onAddMeeting={handleAddMeeting}
             trigger={
-              <Button variant="outline" size="sm">
+              <Button variant="outline" size="sm" type="button">
                 <Plus className="mr-2 h-4 w-4" />
                 Add Meeting
               </Button>
@@ -376,7 +376,7 @@ export function TeamMeetingNotes({ projectId }: TeamMeetingNotesProps) {
               projectId={projectId}
               onAddMeeting={handleAddMeeting}
               trigger={
-                <Button>
+                <Button type="button">
                   <Plus className="mr-2 h-4 w-4" />
                   Add Your First Meeting
                 </Button>

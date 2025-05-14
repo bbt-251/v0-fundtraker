@@ -93,15 +93,17 @@ export function AddTeamMeetingDialog({ projectId, onAddMeeting, trigger }: AddTe
         if (!newOpen) resetForm()
       }}
     >
-      <DialogTrigger asChild>
-        {trigger || (
-          <Button size="sm">
+      <DialogTrigger>
+        {trigger ? (
+          <div onClick={() => setOpen(true)}>{trigger}</div>
+        ) : (
+          <Button size="sm" onClick={() => setOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />
             Add Meeting
           </Button>
         )}
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[600px] max-h-[85vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[900px] max-h-[90vh] overflow-y-auto w-[95vw]">
         <DialogHeader>
           <DialogTitle>Add New Meeting</DialogTitle>
           <DialogDescription>Enter the details of the team meeting to record in the weekly log.</DialogDescription>

@@ -188,7 +188,7 @@ export default function DonatedProjectsPage() {
                                 {donation.message || "No message"}
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                                {calculatePercentage(donation.amount, project.goal)}
+                                {calculatePercentage(donation.amount, project.cost??0)}
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-center">
                                 <FundAllocationModal

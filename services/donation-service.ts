@@ -1,4 +1,4 @@
-import { db } from "@/lib/firebase/firebase"
+import { db } from "@/lib/firebase/firebase-client"
 import {
   collection,
   doc,
@@ -13,6 +13,30 @@ import {
 } from "firebase/firestore"
 import type { Donation } from "@/types/donation"
 import { updateProject } from "./project-service"
+
+// Get donation by ID
+export const getDonationById = async (donationId: string): Promise<Donation | null> => {
+  try {
+    const donationRef = doc(db, "donations", donationId)
+    const donationSnap = await getDoc(donationRef)
+
+    if (donationSnap.exists()) {
+      const donationData = donationSnap.data() as Omit<Donation, "id">
+      return {
+        id: donationSnap.id,
+        ...donationData,
+        timestamp: donationData.timestamp
+          ? new Date(donationData.timestamp.toDate()).toISOString()
+          : new Date().toISOString(),
+      }
+    }
+
+    return null
+  } catch (error) {
+    console.error("Error getting donation by ID:", error)
+    return null
+  }
+}
 
 // Collection reference
 const donationsCollection = collection(db, "donations")
