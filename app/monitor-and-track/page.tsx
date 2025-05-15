@@ -14,6 +14,7 @@ import { LoadingAnimation } from "@/components/loading-animation"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useAuth } from "@/contexts/auth-context"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { WeeklyTabs } from "@/components/weekly-tabs"
 
 export default function MonitorAndTrackPage() {
   const [projects, setProjects] = useState<any[]>([])
@@ -113,6 +114,7 @@ export default function MonitorAndTrackPage() {
 
           <TabsContent value="weekly" className="space-y-8">
             <TeamMeetingNotes projectId={selectedProjectId} />
+            <WeeklyTabs projectId={selectedProjectId} />
           </TabsContent>
         </Tabs>
       ) : (

@@ -16,9 +16,10 @@ import {
   XCircle,
   AlertCircle,
   ChevronRight,
+  PlayCircle,
 } from "lucide-react"
 import { useRouter } from "next/navigation"
-import type { Project } from "@/types/project"
+import type { Project, ProjectTask } from "@/types/project"
 import { Switch } from "@/components/ui/switch"
 import { updateProjectStatus } from "@/services/project-service"
 import { toast } from "@/components/ui/use-toast"
@@ -53,12 +54,17 @@ export function ProjectCard({ project, onEdit, showEditButton = false, onRequest
   const [isInExecution, setIsInExecution] = useState(project.isInExecution || false)
   const [isUpdating, setIsUpdating] = useState(false)
   const [canAnnounce, setCanAnnounce] = useState(false)
+  const [canExecute, setCanExecute] = useState(false)
   const [requirementSections, setRequirementSections] = useState<RequirementSection[]>([])
+  const [executionRequirements, setExecutionRequirements] = useState<RequirementItem[]>([])
   const [hasBeenApprovedBefore, setHasBeenApprovedBefore] = useState(false)
   const [showRequirementsModal, setShowRequirementsModal] = useState(false)
+  const [showExecutionRequirementsModal, setShowExecutionRequirementsModal] = useState(false)
   const [overallProgress, setOverallProgress] = useState(0)
+  const [executionProgress, setExecutionProgress] = useState(0)
+  const [firstTaskCost, setFirstTaskCost] = useState(0)
 
-  // Check if the project meets all requirements for announcement
+  // Check if the project meets all requirements for announcement and execution
   useEffect(() => {
     const checkRequirements = () => {
       // 1. Check Project Definition (including sub-tabs)
@@ -242,6 +248,52 @@ export function ProjectCard({ project, onEdit, showEditButton = false, onRequest
       // Can announce if all requirements are met AND (has been approved before OR is currently approved)
       const allRequirementsMet = allSections.every((section) => section.allMet)
       setCanAnnounce(allRequirementsMet && (wasApproved || project.approvalStatus === "approved"))
+
+      // Check execution requirements
+      // 1. Find the first task (by start date)
+      let firstTask: ProjectTask | null = null
+      let totalFirstTaskCost = 0
+
+      if (project.tasks && project.tasks.length > 0) {
+        // Sort tasks by start date
+        const sortedTasks = [...project.tasks].sort((a, b) => {
+          return new Date(a.startDate).getTime() - new Date(b.startDate).getTime()
+        })
+
+        firstTask = sortedTasks[0]
+
+        // Calculate the cost of the first task
+        if (firstTask && firstTask.resources) {
+          totalFirstTaskCost = firstTask.resources.reduce((sum, resource) => sum + resource.totalCost, 0)
+        }
+      }
+
+      setFirstTaskCost(totalFirstTaskCost)
+
+      // Define execution requirements
+      const executionItems: RequirementItem[] = [
+        {
+          name: "Project is announced to donors",
+          met: Boolean(project.isAnnouncedToDonors),
+          details: "Project must be announced to donors before execution can begin",
+        },
+        {
+          name: "Sufficient funding for first task",
+          met: Boolean(project.donations && project.donations >= totalFirstTaskCost && totalFirstTaskCost > 0),
+          details: `Project needs at least ${formatCurrency(
+            totalFirstTaskCost,
+          )} in donations to cover the first task (current: ${formatCurrency(project.donations || 0)})`,
+        },
+      ]
+
+      setExecutionRequirements(executionItems)
+
+      // Calculate execution requirements progress
+      const executionMet = executionItems.filter((item) => item.met).length
+      setExecutionProgress(Math.round((executionMet / executionItems.length) * 100))
+
+      // Can execute if all execution requirements are met
+      setCanExecute(executionItems.every((item) => item.met))
     }
 
     checkRequirements()
@@ -327,6 +379,12 @@ export function ProjectCard({ project, onEdit, showEditButton = false, onRequest
 
   // Handle toggle for project execution
   const handleExecutionToggle = async () => {
+    // If missing execution requirements, show the modal
+    if (!canExecute) {
+      setShowExecutionRequirementsModal(true)
+      return
+    }
+
     try {
       setIsUpdating(true)
       const newValue = !isInExecution
@@ -359,6 +417,15 @@ export function ProjectCard({ project, onEdit, showEditButton = false, onRequest
     }
 
     return isAnnouncedToDonors ? "Visible to donors" : "Hidden from donors"
+  }
+
+  // Get execution toggle status message
+  const getExecutionStatusMessage = () => {
+    if (!canExecute) {
+      return `${executionProgress}% complete`
+    }
+
+    return isInExecution ? "In progress" : "Not started"
   }
 
   // Navigate to edit section
@@ -467,8 +534,32 @@ export function ProjectCard({ project, onEdit, showEditButton = false, onRequest
                 </div>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">In execution</span>
-                <Switch checked={isInExecution} onCheckedChange={handleExecutionToggle} disabled={isUpdating} />
+                <div className="flex items-center">
+                  <span className="text-sm font-medium">In execution</span>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          className="ml-1 text-muted-foreground hover:text-primary"
+                          onClick={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            setShowExecutionRequirementsModal(true)
+                          }}
+                        >
+                          <Info className="h-4 w-4" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Click for execution requirements</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
+                <div className="flex items-center">
+                  <span className="text-xs text-muted-foreground mr-2">{getExecutionStatusMessage()}</span>
+                  <Switch checked={isInExecution} onCheckedChange={handleExecutionToggle} disabled={isUpdating} />
+                </div>
               </div>
             </div>
           )}
@@ -620,6 +711,133 @@ export function ProjectCard({ project, onEdit, showEditButton = false, onRequest
                 >
                   Request Approval
                 </Button>
+              )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Execution Requirements Modal */}
+      <Dialog open={showExecutionRequirementsModal} onOpenChange={setShowExecutionRequirementsModal}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Project Execution Requirements</DialogTitle>
+            <DialogDescription>
+              Before starting project execution, please ensure the following requirements are met.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="mt-4 space-y-6">
+            {/* Execution Progress */}
+            <div className="bg-muted/30 dark:bg-muted/20 p-4 rounded-lg">
+              <div className="flex justify-between items-center mb-2">
+                <h3 className="font-medium">Execution Readiness</h3>
+                <span className="text-sm font-medium">{executionProgress}%</span>
+              </div>
+              <Progress value={executionProgress} className="h-2" />
+
+              {!canExecute && (
+                <p className="text-sm text-muted-foreground mt-2">
+                  Complete all required items below to start project execution.
+                </p>
+              )}
+            </div>
+
+            {/* Execution Requirements */}
+            <div
+              className={`border rounded-lg overflow-hidden ${
+                canExecute ? "border-green-200 dark:border-green-800" : "border-muted dark:border-muted"
+              }`}
+            >
+              <div
+                className={`p-4 flex justify-between items-center ${
+                  canExecute ? "bg-green-50 dark:bg-green-900/20" : "bg-muted/30 dark:bg-muted/20"
+                }`}
+              >
+                <div className="flex items-center">
+                  {canExecute ? (
+                    <PlayCircle className="h-5 w-5 text-green-600 dark:text-green-500 mr-2" />
+                  ) : (
+                    <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-500 mr-2" />
+                  )}
+                  <h3
+                    className={`font-medium ${canExecute ? "text-green-800 dark:text-green-400" : "text-foreground"}`}
+                  >
+                    Execution Requirements
+                  </h3>
+                </div>
+              </div>
+
+              <div className="divide-y divide-border">
+                {executionRequirements.map((item, itemIndex) => (
+                  <div key={itemIndex} className="p-3 flex items-start">
+                    <div className="mt-0.5 mr-3">
+                      {item.met ? (
+                        <CheckCircle2 className="h-5 w-5 text-green-500 dark:text-green-400" />
+                      ) : (
+                        <XCircle className="h-5 w-5 text-red-500 dark:text-red-400" />
+                      )}
+                    </div>
+                    <div className="flex-1">
+                      <p className={`text-sm font-medium ${item.met ? "text-muted-foreground" : "text-foreground"}`}>
+                        {item.name}
+                      </p>
+                      {!item.met && item.details && (
+                        <p className="text-xs text-red-600 dark:text-red-400 mt-1">{item.details}</p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* First Task Information */}
+            {firstTaskCost > 0 && (
+              <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg border border-blue-100 dark:border-blue-800">
+                <h4 className="font-medium text-blue-800 dark:text-blue-300 mb-2">First Task Funding</h4>
+                <p className="text-sm text-blue-700 dark:text-blue-400 mb-2">
+                  Your first task requires {formatCurrency(firstTaskCost)} in funding before execution can begin.
+                </p>
+                <div className="flex justify-between text-sm mb-1">
+                  <span>Funding Progress</span>
+                  <span>
+                    {project.donations && firstTaskCost
+                      ? Math.min(Math.round((project.donations / firstTaskCost) * 100), 100)
+                      : 0}
+                    %
+                  </span>
+                </div>
+                <Progress
+                  value={
+                    project.donations && firstTaskCost
+                      ? Math.min(Math.round((project.donations / firstTaskCost) * 100), 100)
+                      : 0
+                  }
+                  className="h-2"
+                />
+                <div className="flex justify-between text-xs text-blue-600 dark:text-blue-500 mt-1">
+                  <span>Current: {formatCurrency(project.donations || 0)}</span>
+                  <span>Needed: {formatCurrency(firstTaskCost)}</span>
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-end space-x-2 pt-2">
+              <Button variant="outline" onClick={() => setShowExecutionRequirementsModal(false)}>
+                Close
+              </Button>
+              {!executionRequirements[0]?.met && (
+                <Button
+                  onClick={() => {
+                    setShowExecutionRequirementsModal(false)
+                    setShowRequirementsModal(true)
+                  }}
+                >
+                  View Announcement Requirements
+                </Button>
+              )}
+              {executionRequirements[0]?.met && !executionRequirements[1]?.met && (
+                <Button onClick={() => router.push(`/project-details/${project.id}`)}>View Project Details</Button>
               )}
             </div>
           </div>
