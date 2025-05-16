@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@ant-design/icons": "latest",
     "@emotion/cache": "latest",
     "@emotion/css": "latest",
     "@emotion/is-prop-valid": "latest",

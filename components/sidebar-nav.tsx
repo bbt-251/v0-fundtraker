@@ -21,6 +21,7 @@ import {
   Calendar,
   ChevronDown,
   ChevronRight,
+  File,
 } from "lucide-react"
 import { useState } from "react"
 
@@ -81,6 +82,7 @@ export function SidebarNav({ className, items = [] }: SidebarNavProps) {
       CheckCircle: <CheckCircle className="h-5 w-5" />,
       User: <User className="h-5 w-5" />,
       Calendar: <Calendar className="h-5 w-5" />,
+      File: <File className="h-5 w-5" />,
     }
     return icons[iconName] || <LayoutDashboard className="h-5 w-5" />
   }

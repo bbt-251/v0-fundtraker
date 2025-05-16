@@ -152,6 +152,11 @@ function getNavItems(role?: string) {
         icon: "Calendar",
       },
       {
+        title: "Documents",
+        href: "/documents",
+        icon: "File",
+      },
+      {
         title: "Team",
         href: "#",
         icon: "Users2",

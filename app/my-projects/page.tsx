@@ -109,8 +109,8 @@ export default function MyProjectsPage() {
       {error ? (
         <div className="bg-red-50 text-red-700 p-4 rounded-md">{error}</div>
       ) : projects.length === 0 ? (
-        <div className="text-center py-16 bg-gray-50 rounded-lg">
-          <h3 className="text-lg font-medium text-gray-900">No projects found</h3>
+        <div className="text-center py-16 rounded-lg">
+          <h3 className="text-lg font-medium text-gray-500">No projects found</h3>
           <p className="mt-2 text-sm text-gray-500">Get started by creating a new project.</p>
           <Button onClick={handleCreateProject} className="mt-4">
             <Plus className="h-4 w-4 mr-2" />
