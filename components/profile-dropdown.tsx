@@ -15,7 +15,7 @@ interface ProfileDropdownProps {
 export function ProfileDropdown({ email, role, verified }: ProfileDropdownProps) {
   const [isOpen, setIsOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
-  const { signOut } = useAuth()
+  const { logout } = useAuth() // Changed from signOut to logout to match the auth context
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -110,7 +110,7 @@ export function ProfileDropdown({ email, role, verified }: ProfileDropdownProps)
               <button
                 onClick={() => {
                   setIsOpen(false)
-                  signOut()
+                  logout() // Changed from signOut() to logout() to match the auth context
                 }}
                 className="flex items-center w-full px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700"
               >
