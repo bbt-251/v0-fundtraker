@@ -11,7 +11,6 @@ import {
   formatFileSize,
 } from "@/services/document-service"
 import { getProjectsByOwner } from "@/services/project-service"
-import { getTasks } from "@/services/task-service"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -37,9 +36,9 @@ import {
   Plus,
 } from "lucide-react"
 import { ConfirmationModal } from "@/components/confirmation-modal"
+import { UploadDocumentDialog } from "./upload-document-dialog"
 import type { Document, DocumentFilter, DocumentStatistics } from "@/types/document"
 import type { Project } from "@/types/project"
-import type { Task } from "@/types/task"
 
 export default function DocumentManagement() {
   const { user } = useAuth()
@@ -48,11 +47,10 @@ export default function DocumentManagement() {
   // State for documents and projects
   const [documents, setDocuments] = useState<Document[]>([])
   const [projects, setProjects] = useState<Project[]>([])
-  const [tasks, setTasks] = useState<Task[]>([])
   const [statistics, setStatistics] = useState<DocumentStatistics | null>(null)
 
   // State for selected filters
-  const [selectedProjectId, setSelectedProjectId] = useState<string>("")
+  const [selectedProjectId, setSelectedProjectId] = useState<string>("default")
   const [selectedTaskId, setSelectedTaskId] = useState<string>("all")
   const [selectedDocType, setSelectedDocType] = useState<string>("all")
   const [searchQuery, setSearchQuery] = useState("")
@@ -82,7 +80,7 @@ export default function DocumentManagement() {
         setProjects(fetchedProjects)
 
         // Select the first project by default if none is selected
-        if (fetchedProjects.length > 0 && !selectedProjectId) {
+        if (fetchedProjects.length > 0 && selectedProjectId === "default") {
           setSelectedProjectId(fetchedProjects[0].id)
         }
       } catch (error) {
@@ -98,31 +96,13 @@ export default function DocumentManagement() {
     fetchProjects()
   }, [user, toast, selectedProjectId])
 
-  // Fetch tasks when project changes
-  useEffect(() => {
-    const fetchTasks = async () => {
-      try {
-        if (!selectedProjectId) return
-
-        const fetchedTasks = await getTasks(selectedProjectId)
-        setTasks(fetchedTasks)
-      } catch (error) {
-        console.error("Error fetching tasks:", error)
-      }
-    }
-
-    if (selectedProjectId) {
-      fetchTasks()
-    }
-  }, [selectedProjectId])
-
   // Fetch documents and statistics when filters change
   useEffect(() => {
     const fetchDocuments = async () => {
       try {
         setIsLoading(true)
 
-        if (!selectedProjectId) {
+        if (!selectedProjectId || selectedProjectId === "default") {
           setDocuments([])
           setStatistics(null)
           return
@@ -167,6 +147,33 @@ export default function DocumentManagement() {
 
     fetchDocuments()
   }, [selectedProjectId, selectedTaskId, selectedDocType, searchQuery, toast])
+
+  // Handle document refresh after upload
+  const handleDocumentUploadComplete = async () => {
+    try {
+      if (!selectedProjectId || selectedProjectId === "default") return
+
+      // Prepare filter
+      const filter: DocumentFilter = {
+        projectId: selectedProjectId,
+        status: "active",
+      }
+
+      if (selectedTaskId !== "all") {
+        filter.taskId = selectedTaskId
+      }
+
+      // Fetch documents
+      const fetchedDocuments = await getDocuments(filter)
+      setDocuments(fetchedDocuments)
+
+      // Fetch statistics
+      const stats = await getDocumentStatistics(selectedProjectId)
+      setStatistics(stats)
+    } catch (error) {
+      console.error("Error refreshing documents:", error)
+    }
+  }
 
   // Handle document actions
   const handleViewDocument = async (document: Document) => {
@@ -253,7 +260,7 @@ export default function DocumentManagement() {
         })
 
         // Refresh statistics
-        if (selectedProjectId) {
+        if (selectedProjectId && selectedProjectId !== "default") {
           const stats = await getDocumentStatistics(selectedProjectId)
           setStatistics(stats)
         }
@@ -327,7 +334,7 @@ export default function DocumentManagement() {
             </SelectContent>
           </Select>
 
-          {selectedProjectId && (
+          {selectedProjectId && selectedProjectId !== "default" && (
             <>
               <Select value={selectedTaskId} onValueChange={setSelectedTaskId}>
                 <SelectTrigger className="w-[180px]">
@@ -335,11 +342,6 @@ export default function DocumentManagement() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Tasks</SelectItem>
-                  {tasks.map((task) => (
-                    <SelectItem key={task.id} value={task.id}>
-                      {task.title}
-                    </SelectItem>
-                  ))}
                 </SelectContent>
               </Select>
 
@@ -363,7 +365,7 @@ export default function DocumentManagement() {
         </div>
       </div>
 
-      {!selectedProjectId ? (
+      {!selectedProjectId || selectedProjectId === "default" ? (
         <div className="flex flex-col items-center justify-center p-12 text-center">
           <File className="h-12 w-12 text-muted-foreground mb-4" />
           <h3 className="text-lg font-medium mb-2">No Project Selected</h3>
@@ -440,102 +442,98 @@ export default function DocumentManagement() {
                       </tr>
                     </thead>
                     <tbody>
-                      {documents.map((doc) => {
-                        const task = tasks.find((t) => t.id === doc.taskId)
-
-                        return (
-                          <tr key={doc.id} className="border-b">
-                            <td className="py-3">
-                              <div className="flex items-center">
-                                {getFileIcon(doc.fileType)}
-                                <span className="ml-2 font-medium">{doc.name}</span>
-                              </div>
-                            </td>
-                            <td className="py-3">{task ? task.title : "No task"}</td>
-                            <td className="py-3">
-                              <Badge variant="outline">{doc.fileType.split("/")[1] || doc.fileType}</Badge>
-                            </td>
-                            <td className="py-3">{formatFileSize(doc.fileSize)}</td>
-                            <td className="py-3">
-                              <div>
-                                <div>{formatDate(doc.uploadedAt)}</div>
-                                <div className="text-xs text-muted-foreground">{doc.uploadedBy.name}</div>
-                              </div>
-                            </td>
-                            <td className="py-3 text-right">
-                              <div className="flex justify-end space-x-2">
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => handleViewDocument(doc)}
-                                  disabled={isActionLoading}
-                                >
-                                  <Eye className="h-4 w-4" />
-                                  <span className="sr-only">View</span>
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => handleDownloadDocument(doc)}
-                                  disabled={isActionLoading}
-                                >
-                                  <Download className="h-4 w-4" />
-                                  <span className="sr-only">Download</span>
-                                </Button>
-                                <DropdownMenu>
-                                  <DropdownMenuTrigger asChild>
-                                    <Button variant="ghost" size="icon">
-                                      <MoreHorizontal className="h-4 w-4" />
-                                      <span className="sr-only">More</span>
-                                    </Button>
-                                  </DropdownMenuTrigger>
-                                  <DropdownMenuContent align="end">
-                                    <DropdownMenuItem onClick={() => handleViewDocument(doc)}>
-                                      <Eye className="mr-2 h-4 w-4" />
-                                      View
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => handleDownloadDocument(doc)}>
-                                      <Download className="mr-2 h-4 w-4" />
-                                      Download
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem
-                                      onClick={() => {
-                                        setSelectedDocument(doc)
-                                        setDocumentDetailsOpen(true)
-                                      }}
-                                    >
-                                      <Edit className="mr-2 h-4 w-4" />
-                                      Edit Details
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem
-                                      onClick={() => {
-                                        navigator.clipboard.writeText(doc.fileUrl)
-                                        toast({
-                                          title: "Link copied",
-                                          description: "Document link copied to clipboard",
-                                        })
-                                      }}
-                                    >
-                                      <Share className="mr-2 h-4 w-4" />
-                                      Copy Link
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem
-                                      className="text-destructive focus:text-destructive"
-                                      onClick={() => {
-                                        setDocumentToDelete(doc)
-                                        setDeleteDialogOpen(true)
-                                      }}
-                                    >
-                                      <Trash2 className="mr-2 h-4 w-4" />
-                                      Delete
-                                    </DropdownMenuItem>
-                                  </DropdownMenuContent>
-                                </DropdownMenu>
-                              </div>
-                            </td>
-                          </tr>
-                        )
-                      })}
+                      {documents.map((doc) => (
+                        <tr key={doc.id} className="border-b">
+                          <td className="py-3">
+                            <div className="flex items-center">
+                              {getFileIcon(doc.fileType)}
+                              <span className="ml-2 font-medium">{doc.name}</span>
+                            </div>
+                          </td>
+                          <td className="py-3">{doc.taskId ? `Task ${doc.taskId}` : "No task"}</td>
+                          <td className="py-3">
+                            <Badge variant="outline">{doc.type || doc.fileType.split("/")[1] || doc.fileType}</Badge>
+                          </td>
+                          <td className="py-3">{formatFileSize(doc.fileSize)}</td>
+                          <td className="py-3">
+                            <div>
+                              <div>{formatDate(doc.uploadedAt)}</div>
+                              <div className="text-xs text-muted-foreground">{doc.uploadedBy.name}</div>
+                            </div>
+                          </td>
+                          <td className="py-3 text-right">
+                            <div className="flex justify-end space-x-2">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleViewDocument(doc)}
+                                disabled={isActionLoading}
+                              >
+                                <Eye className="h-4 w-4" />
+                                <span className="sr-only">View</span>
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleDownloadDocument(doc)}
+                                disabled={isActionLoading}
+                              >
+                                <Download className="h-4 w-4" />
+                                <span className="sr-only">Download</span>
+                              </Button>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="ghost" size="icon">
+                                    <MoreHorizontal className="h-4 w-4" />
+                                    <span className="sr-only">More</span>
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem onClick={() => handleViewDocument(doc)}>
+                                    <Eye className="mr-2 h-4 w-4" />
+                                    View
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => handleDownloadDocument(doc)}>
+                                    <Download className="mr-2 h-4 w-4" />
+                                    Download
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onClick={() => {
+                                      setSelectedDocument(doc)
+                                      setDocumentDetailsOpen(true)
+                                    }}
+                                  >
+                                    <Edit className="mr-2 h-4 w-4" />
+                                    Edit Details
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(doc.fileUrl)
+                                      toast({
+                                        title: "Link copied",
+                                        description: "Document link copied to clipboard",
+                                      })
+                                    }}
+                                  >
+                                    <Share className="mr-2 h-4 w-4" />
+                                    Copy Link
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    className="text-destructive focus:text-destructive"
+                                    onClick={() => {
+                                      setDocumentToDelete(doc)
+                                      setDeleteDialogOpen(true)
+                                    }}
+                                  >
+                                    <Trash2 className="mr-2 h-4 w-4" />
+                                    Delete
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
                 </div>
@@ -625,6 +623,14 @@ export default function DocumentManagement() {
           )}
         </>
       )}
+
+      {/* Upload Document Dialog */}
+      <UploadDocumentDialog
+        isOpen={uploadDialogOpen}
+        onClose={() => setUploadDialogOpen(false)}
+        onUploadComplete={handleDocumentUploadComplete}
+        selectedProjectId={selectedProjectId !== "default" ? selectedProjectId : ""}
+      />
 
       {/* Delete Confirmation Modal */}
       <ConfirmationModal

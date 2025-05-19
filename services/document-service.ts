@@ -170,6 +170,7 @@ export async function uploadDocument(
       name: string
       email?: string
     }
+    type: string // Document type (Contract, Invoice, etc.)
   },
   onProgress?: (progress: number) => void,
 ): Promise<Document | null> {
@@ -220,6 +221,7 @@ export async function uploadDocument(
               version: 1,
               viewCount: 0,
               downloadCount: 0,
+              type: metadata.type, // Add document type
             }
 
             // Add document to Firestore
@@ -497,19 +499,8 @@ export async function getDocumentStatistics(projectId: string): Promise<Document
     // Group by type
     const typeCount: Record<string, number> = {}
     documents.forEach((doc) => {
-      // Get a friendly name for the file type
-      let typeName = "Other"
-
-      if (doc.fileType.includes("pdf")) typeName = "PDF"
-      else if (doc.fileType.includes("word") || doc.fileType.includes("doc")) typeName = "Document"
-      else if (doc.fileType.includes("sheet") || doc.fileType.includes("excel") || doc.fileType.includes("csv"))
-        typeName = "Spreadsheet"
-      else if (doc.fileType.includes("presentation") || doc.fileType.includes("powerpoint")) typeName = "Presentation"
-      else if (doc.fileType.includes("image") || doc.fileType.includes("png") || doc.fileType.includes("jpg"))
-        typeName = "Image"
-      else if (doc.fileType.includes("text")) typeName = "Text"
-      else if (doc.fileType.includes("zip") || doc.fileType.includes("compressed")) typeName = "Archive"
-
+      // Use the document type field if available, otherwise use file type
+      const typeName = doc.type || "Other"
       typeCount[typeName] = (typeCount[typeName] || 0) + 1
     })
 
@@ -519,13 +510,16 @@ export async function getDocumentStatistics(projectId: string): Promise<Document
 
       // Assign a color based on the document type
       const colorMap: Record<string, string> = {
-        PDF: "red",
-        Document: "blue",
-        Spreadsheet: "green",
-        Presentation: "amber",
-        Image: "purple",
-        Text: "gray",
-        Archive: "orange",
+        Contract: "blue",
+        Invoice: "green",
+        Document: "indigo",
+        Notes: "amber",
+        Diagram: "purple",
+        Documentation: "cyan",
+        Design: "pink",
+        Spreadsheet: "emerald",
+        Presentation: "orange",
+        Report: "red",
         Other: "slate",
       }
 

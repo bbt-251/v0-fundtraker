@@ -1,5 +1,11 @@
 import type { Timestamp } from "firebase/firestore"
 
+export interface DocumentTag {
+  id: string
+  name: string
+  color?: string
+}
+
 export interface Document {
   id: string
   name: string
@@ -21,6 +27,7 @@ export interface Document {
   version: number
   viewCount?: number
   downloadCount?: number
+  type?: string // Document type (Contract, Invoice, etc.)
 }
 
 export interface DocumentActivity {
@@ -35,24 +42,17 @@ export interface DocumentActivity {
   details?: string
 }
 
-export interface DocumentFilter {
-  projectId?: string
-  taskId?: string
-  fileType?: string
-  status?: string
-  searchQuery?: string
-  tags?: string[]
+export interface DocumentType {
+  id: string
+  name: string
+  count: number
+  percentage: number
+  color: string
 }
 
 export interface DocumentStatistics {
   totalDocuments: number
-  documentsByType: {
-    id: string
-    name: string
-    count: number
-    percentage: number
-    color: string
-  }[]
+  documentsByType: DocumentType[]
   documentsByTask: {
     taskId: string
     taskName: string
@@ -60,4 +60,17 @@ export interface DocumentStatistics {
     percentage: number
   }[]
   recentActivity: DocumentActivity[]
+}
+
+export interface DocumentFilter {
+  projectId?: string
+  taskId?: string
+  type?: string
+  tags?: string[]
+  uploadedBy?: string
+  dateFrom?: Date
+  dateTo?: Date
+  searchQuery?: string
+  fileType?: string
+  status?: string
 }
