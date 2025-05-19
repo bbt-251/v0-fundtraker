@@ -1,3 +1,5 @@
+"use client"
+
 import {
   collection,
   doc,
@@ -5,19 +7,19 @@ import {
   getDocs,
   addDoc,
   updateDoc,
-  deleteDoc,
   query,
   where,
   orderBy,
   Timestamp,
+  limit,
 } from "firebase/firestore"
-import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from "firebase/storage"
-import { db, storage } from "@/lib/firebase/firebase-init"
-import type { Document, DocumentFilter } from "@/types/document"
+import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage"
+import { getFirebaseServices } from "@/lib/firebase/firebase-client"
+import type { Document, DocumentActivity, DocumentFilter, DocumentStatistics } from "@/types/document"
 
 // Collection references
-const documentsRef = collection(db, "documents")
-const documentActivitiesRef = collection(db, "documentActivities")
+const documentsRef = collection(getFirebaseServices().db, "documents")
+const documentActivitiesRef = collection(getFirebaseServices().db, "documentActivities")
 
 // Helper function to format file size
 export const formatFileSize = (bytes: number): string => {
@@ -87,27 +89,46 @@ export const getContentType = (fileExtension: string): string => {
 // Get all documents with optional filtering
 export async function getDocuments(filter?: DocumentFilter): Promise<Document[]> {
   try {
-    let q = documentsRef
+    const { db } = getFirebaseServices()
+    if (!db) throw new Error("Firestore not initialized")
+
+    const documentsCollection = collection(db, "documents")
+
+    // Start with a base query
+    let q = documentsCollection
 
     // Apply filters if provided
     if (filter) {
-      q = query(q, orderBy("uploadedAt", "desc"))
+      // Create a query with all the filters
+      const constraints = []
 
       if (filter.projectId) {
-        q = query(q, where("projectId", "==", filter.projectId))
+        constraints.push(where("projectId", "==", filter.projectId))
       }
 
       if (filter.taskId) {
-        q = query(q, where("taskId", "==", filter.taskId))
+        constraints.push(where("taskId", "==", filter.taskId))
       }
 
       if (filter.fileType) {
-        q = query(q, where("fileType", "==", filter.fileType))
+        constraints.push(where("fileType", "==", filter.fileType))
       }
 
       if (filter.status) {
-        q = query(q, where("status", "==", filter.status))
+        constraints.push(where("status", "==", filter.status))
+      } else {
+        // By default, only show active documents
+        constraints.push(where("status", "==", "active"))
       }
+
+      // Add ordering
+      constraints.push(orderBy("uploadedAt", "desc"))
+
+      // Apply all constraints to the query
+      q = query(documentsCollection, ...constraints)
+    } else {
+      // Default query with just ordering
+      q = query(documentsCollection, orderBy("uploadedAt", "desc"))
     }
 
     const querySnapshot = await getDocs(q)
@@ -131,19 +152,37 @@ export async function getDocuments(filter?: DocumentFilter): Promise<Document[]>
     return documents
   } catch (error) {
     console.error("Error getting documents:", error)
-    throw error
+    return []
   }
 }
 
 // Upload a document
 export async function uploadDocument(
   file: File,
-  metadata: Omit<Document, "id" | "fileUrl" | "fileType" | "fileSize">,
+  metadata: {
+    name: string
+    description?: string
+    projectId: string
+    taskId?: string
+    tags?: string[]
+    uploadedBy: {
+      id: string
+      name: string
+      email?: string
+    }
+  },
   onProgress?: (progress: number) => void,
-): Promise<Document> {
+): Promise<Document | null> {
   try {
+    const { storage, db } = getFirebaseServices()
+    if (!storage || !db) throw new Error("Firebase not initialized")
+
+    // Create a unique filename
+    const timestamp = Date.now()
+    const uniqueFilename = `${timestamp}_${file.name.replace(/[^a-zA-Z0-9.]/g, "_")}`
+
     // Create a storage reference
-    const storageRef = ref(storage, `documents/${metadata.projectId}/${Date.now()}_${file.name}`)
+    const storageRef = ref(storage, `documents/${metadata.projectId}/${uniqueFilename}`)
 
     // Upload file with progress monitoring
     const uploadTask = uploadBytesResumable(storageRef, file)
@@ -167,19 +206,40 @@ export async function uploadDocument(
 
             // Create document metadata in Firestore
             const docData: Omit<Document, "id"> = {
-              ...metadata,
+              name: metadata.name || file.name,
+              description: metadata.description,
+              projectId: metadata.projectId,
+              taskId: metadata.taskId,
               fileUrl,
               fileType: file.type,
               fileSize: file.size,
-              uploadedAt: new Date().toISOString(),
+              uploadedBy: metadata.uploadedBy,
+              uploadedAt: Timestamp.now(),
+              tags: metadata.tags || [],
+              status: "active",
               version: 1,
-              status: "draft",
+              viewCount: 0,
+              downloadCount: 0,
             }
 
-            const docRef = await addDoc(documentsRef, docData)
+            // Add document to Firestore
+            const documentsCollection = collection(db, "documents")
+            const docRef = await addDoc(documentsCollection, docData)
+
+            // Record the upload activity
+            await addDocumentActivity({
+              documentId: docRef.id,
+              actionType: "upload",
+              actionBy: {
+                id: metadata.uploadedBy.id,
+                name: metadata.uploadedBy.name,
+              },
+              details: "Document uploaded",
+            })
 
             // Return the complete document with ID
-            resolve({ id: docRef.id, ...docData })
+            const newDoc = { id: docRef.id, ...docData }
+            resolve(newDoc)
           } catch (error) {
             console.error("Error saving document metadata:", error)
             reject(error)
@@ -189,44 +249,112 @@ export async function uploadDocument(
     })
   } catch (error) {
     console.error("Error uploading document:", error)
-    throw error
+    return null
   }
 }
 
 // Update document metadata
-export async function updateDocument(id: string, data: Partial<Document>): Promise<void> {
+export async function updateDocument(id: string, data: Partial<Document>): Promise<boolean> {
   try {
+    const { db } = getFirebaseServices()
+    if (!db) throw new Error("Firestore not initialized")
+
     const docRef = doc(db, "documents", id)
+
+    // Remove fields that shouldn't be updated directly
+    const { id: docId, uploadedAt, uploadedBy, fileUrl, fileSize, fileType, ...updateData } = data
+
     await updateDoc(docRef, {
-      ...data,
-      lastModified: new Date().toISOString(),
+      ...updateData,
+      lastModified: Timestamp.now(),
     })
+
+    // Record the edit activity if user info is provided
+    if (data.uploadedBy) {
+      await addDocumentActivity({
+        documentId: id,
+        actionType: "edit",
+        actionBy: {
+          id: data.uploadedBy.id,
+          name: data.uploadedBy.name,
+        },
+        details: "Document metadata updated",
+      })
+    }
+
+    return true
   } catch (error) {
     console.error("Error updating document:", error)
-    throw error
+    return false
   }
 }
 
 // Delete a document
-export async function deleteDocument(document: Document): Promise<void> {
+export async function deleteDocument(id: string, userId: string, userName: string): Promise<boolean> {
   try {
-    // Delete from Firestore
-    await deleteDoc(doc(db, "documents", document.id))
+    const { db, storage } = getFirebaseServices()
+    if (!db || !storage) throw new Error("Firebase not initialized")
 
-    // Delete from Storage
-    if (document.fileUrl) {
-      const storageRef = ref(storage, document.fileUrl)
-      await deleteObject(storageRef)
+    // Get the document first to get the storage path
+    const docRef = doc(db, "documents", id)
+    const docSnap = await getDoc(docRef)
+
+    if (!docSnap.exists()) {
+      throw new Error("Document not found")
     }
+
+    const document = { id: docSnap.id, ...docSnap.data() } as Document
+
+    // Update the document status to deleted instead of actually deleting
+    await updateDoc(docRef, {
+      status: "deleted",
+      lastModified: Timestamp.now(),
+    })
+
+    // Record the delete activity
+    await addDocumentActivity({
+      documentId: id,
+      actionType: "delete",
+      actionBy: {
+        id: userId,
+        name: userName,
+      },
+      details: "Document deleted",
+    })
+
+    // Optionally, delete the file from storage
+    // Uncomment this if you want to actually delete the file
+    /*
+    if (document.fileUrl) {
+      try {
+        // Extract the path from the URL
+        const url = new URL(document.fileUrl)
+        const path = url.pathname.split('/o/')[1]
+        if (path) {
+          const decodedPath = decodeURIComponent(path)
+          const fileRef = ref(storage, decodedPath)
+          await deleteObject(fileRef)
+        }
+      } catch (error) {
+        console.error("Error deleting file from storage:", error)
+        // Continue even if storage deletion fails
+      }
+    }
+    */
+
+    return true
   } catch (error) {
     console.error("Error deleting document:", error)
-    throw error
+    return false
   }
 }
 
 // Get document by ID
 export async function getDocumentById(id: string): Promise<Document | null> {
   try {
+    const { db } = getFirebaseServices()
+    if (!db) throw new Error("Firestore not initialized")
+
     const docRef = doc(db, "documents", id)
     const docSnap = await getDoc(docRef)
 
@@ -237,80 +365,177 @@ export async function getDocumentById(id: string): Promise<Document | null> {
     return null
   } catch (error) {
     console.error("Error getting document by ID:", error)
-    throw error
+    return null
   }
 }
 
-// Add a document activity
-export const addDocumentActivity = async (
-  documentId: string,
-  actionType: string,
-  userId: string,
-  userName: string,
-  details?: string,
-): Promise<void> => {
+// View a document (increment view count)
+export async function viewDocument(id: string, userId: string, userName: string): Promise<string | null> {
   try {
-    await addDoc(documentActivitiesRef, {
-      documentId,
-      actionType,
+    const { db } = getFirebaseServices()
+    if (!db) throw new Error("Firestore not initialized")
+
+    const docRef = doc(db, "documents", id)
+    const docSnap = await getDoc(docRef)
+
+    if (!docSnap.exists()) {
+      throw new Error("Document not found")
+    }
+
+    const document = { id: docSnap.id, ...docSnap.data() } as Document
+
+    // Increment view count
+    await updateDoc(docRef, {
+      viewCount: (document.viewCount || 0) + 1,
+      lastModified: Timestamp.now(),
+    })
+
+    // Record the view activity
+    await addDocumentActivity({
+      documentId: id,
+      actionType: "view",
       actionBy: {
         id: userId,
         name: userName,
       },
-      actionDate: Timestamp.now(),
-      details,
     })
+
+    return document.fileUrl
   } catch (error) {
-    console.error("Error adding document activity:", error)
-    // Don't throw, as this is a non-critical operation
+    console.error("Error viewing document:", error)
+    return null
   }
 }
 
-// Get recent document activities
-export const getRecentDocumentActivities = async (projectId: string, limit = 10): Promise<any[]> => {
+// Download a document (increment download count)
+export async function downloadDocument(id: string, userId: string, userName: string): Promise<string | null> {
   try {
-    // First get all document IDs for the project
-    const docsQuery = query(documentsRef, where("projectId", "==", projectId))
-    const docsSnapshot = await getDocs(docsQuery)
-    const documentIds = docsSnapshot.docs.map((doc) => doc.id)
+    const { db } = getFirebaseServices()
+    if (!db) throw new Error("Firestore not initialized")
 
-    if (documentIds.length === 0) {
-      return []
+    const docRef = doc(db, "documents", id)
+    const docSnap = await getDoc(docRef)
+
+    if (!docSnap.exists()) {
+      throw new Error("Document not found")
     }
 
-    // Query activities for these documents
-    const activitiesQuery = query(
-      documentActivitiesRef,
-      where("documentId", "in", documentIds),
-      orderBy("actionDate", "desc"),
-      limit(limit),
-    )
+    const document = { id: docSnap.id, ...docSnap.data() } as Document
 
-    const activitiesSnapshot = await getDocs(activitiesQuery)
+    // Increment download count
+    await updateDoc(docRef, {
+      downloadCount: (document.downloadCount || 0) + 1,
+      lastModified: Timestamp.now(),
+    })
 
-    return activitiesSnapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    }))
+    // Record the download activity
+    await addDocumentActivity({
+      documentId: id,
+      actionType: "download",
+      actionBy: {
+        id: userId,
+        name: userName,
+      },
+    })
+
+    return document.fileUrl
   } catch (error) {
-    console.error("Error getting recent document activities:", error)
-    throw error
+    console.error("Error downloading document:", error)
+    return null
+  }
+}
+
+// Add a document activity
+export async function addDocumentActivity(activity: {
+  documentId: string
+  actionType: DocumentActivity["actionType"]
+  actionBy: {
+    id: string
+    name: string
+  }
+  details?: string
+}): Promise<boolean> {
+  try {
+    const { db } = getFirebaseServices()
+    if (!db) throw new Error("Firestore not initialized")
+
+    const activitiesCollection = collection(db, "documentActivities")
+
+    await addDoc(activitiesCollection, {
+      ...activity,
+      actionDate: Timestamp.now(),
+    })
+
+    return true
+  } catch (error) {
+    console.error("Error adding document activity:", error)
+    return false
   }
 }
 
 // Get document statistics
-export const getDocumentStatistics = async (projectId: string): Promise<any> => {
+export async function getDocumentStatistics(projectId: string): Promise<DocumentStatistics | null> {
   try {
+    const { db } = getFirebaseServices()
+    if (!db) throw new Error("Firestore not initialized")
+
     // Get all documents for the project
-    const documents = await getDocuments({ projectId })
+    const documents = await getDocuments({ projectId, status: "active" })
 
     // Calculate total count
     const totalDocuments = documents.length
 
+    if (totalDocuments === 0) {
+      return {
+        totalDocuments: 0,
+        documentsByType: [],
+        documentsByTask: [],
+        recentActivity: [],
+      }
+    }
+
     // Group by type
     const typeCount: Record<string, number> = {}
     documents.forEach((doc) => {
-      typeCount[doc.fileType] = (typeCount[doc.fileType] || 0) + 1
+      // Get a friendly name for the file type
+      let typeName = "Other"
+
+      if (doc.fileType.includes("pdf")) typeName = "PDF"
+      else if (doc.fileType.includes("word") || doc.fileType.includes("doc")) typeName = "Document"
+      else if (doc.fileType.includes("sheet") || doc.fileType.includes("excel") || doc.fileType.includes("csv"))
+        typeName = "Spreadsheet"
+      else if (doc.fileType.includes("presentation") || doc.fileType.includes("powerpoint")) typeName = "Presentation"
+      else if (doc.fileType.includes("image") || doc.fileType.includes("png") || doc.fileType.includes("jpg"))
+        typeName = "Image"
+      else if (doc.fileType.includes("text")) typeName = "Text"
+      else if (doc.fileType.includes("zip") || doc.fileType.includes("compressed")) typeName = "Archive"
+
+      typeCount[typeName] = (typeCount[typeName] || 0) + 1
+    })
+
+    // Calculate percentages and create type objects
+    const documentsByType = Object.entries(typeCount).map(([name, count]) => {
+      const percentage = (count / totalDocuments) * 100
+
+      // Assign a color based on the document type
+      const colorMap: Record<string, string> = {
+        PDF: "red",
+        Document: "blue",
+        Spreadsheet: "green",
+        Presentation: "amber",
+        Image: "purple",
+        Text: "gray",
+        Archive: "orange",
+        Other: "slate",
+      }
+
+      return {
+        id: name.toLowerCase().replace(/\s+/g, "-"),
+        name,
+        count,
+        percentage,
+        color: colorMap[name] || "gray",
+      }
     })
 
     // Group by task
@@ -318,28 +543,86 @@ export const getDocumentStatistics = async (projectId: string): Promise<any> => 
     documents.forEach((doc) => {
       if (doc.taskId) {
         if (!taskCount[doc.taskId]) {
-          taskCount[doc.taskId] = { name: "", count: 0 }
+          taskCount[doc.taskId] = { name: "Task " + doc.taskId, count: 0 }
         }
         taskCount[doc.taskId].count += 1
-        // Use the first encountered task name
-        if (!taskCount[doc.taskId].name && doc.taskName) {
-          taskCount[doc.taskId].name = doc.taskName
-        }
+      }
+    })
+
+    // Calculate percentages and create task objects
+    const documentsByTask = Object.entries(taskCount).map(([taskId, { name, count }]) => {
+      const percentage = (count / totalDocuments) * 100
+      return {
+        taskId,
+        taskName: name,
+        count,
+        percentage,
       }
     })
 
     // Get recent activities
-    const recentActivity = await getRecentDocumentActivities(projectId)
+    const activitiesCollection = collection(db, "documentActivities")
+
+    // Get document IDs for the project
+    const documentIds = documents.map((doc) => doc.id)
+
+    // If there are no documents, return empty activities
+    if (documentIds.length === 0) {
+      return {
+        totalDocuments,
+        documentsByType,
+        documentsByTask,
+        recentActivity: [],
+      }
+    }
+
+    // We can only query 'in' with 10 items at a time, so we'll need to batch
+    const batchSize = 10
+    let allActivities: DocumentActivity[] = []
+
+    // Process in batches of 10
+    for (let i = 0; i < documentIds.length; i += batchSize) {
+      const batch = documentIds.slice(i, i + batchSize)
+
+      if (batch.length > 0) {
+        const q = query(
+          activitiesCollection,
+          where("documentId", "in", batch),
+          orderBy("actionDate", "desc"),
+          limit(50),
+        )
+
+        const activitiesSnapshot = await getDocs(q)
+        const batchActivities = activitiesSnapshot.docs.map(
+          (doc) =>
+            ({
+              id: doc.id,
+              ...doc.data(),
+            }) as DocumentActivity,
+        )
+
+        allActivities = [...allActivities, ...batchActivities]
+      }
+    }
+
+    // Sort all activities by date and take the most recent 10
+    allActivities.sort((a, b) => {
+      const dateA = a.actionDate instanceof Timestamp ? a.actionDate.toMillis() : 0
+      const dateB = b.actionDate instanceof Timestamp ? b.actionDate.toMillis() : 0
+      return dateB - dateA
+    })
+
+    const recentActivity = allActivities.slice(0, 10)
 
     return {
       totalDocuments,
-      typeCount,
-      taskCount,
+      documentsByType,
+      documentsByTask,
       recentActivity,
     }
   } catch (error) {
     console.error("Error getting document statistics:", error)
-    throw error
+    return null
   }
 }
 

@@ -1,37 +1,26 @@
 import type { Timestamp } from "firebase/firestore"
 
-export interface DocumentTag {
+export interface Document {
   id: string
   name: string
-  color?: string
-}
-
-export interface ProjectDocument {
-  id: string
-  name: string
-  fileName: string
+  description?: string
   projectId: string
   taskId?: string
-  type: string
-  size: number
-  sizeFormatted: string
-  url: string
+  fileUrl: string
+  fileType: string
+  fileSize: number
   uploadedBy: {
     id: string
     name: string
-    email: string
+    email?: string
   }
-  uploadedAt: Timestamp
-  description?: string
-  tags: string[]
-  fileExtension: string
-  contentType: string
-  isPublic: boolean
-  sharedWith?: string[]
-  lastViewed?: Timestamp
-  downloadCount?: number
+  uploadedAt: Timestamp | string
+  lastModified?: Timestamp | string
+  tags?: string[]
+  status: "active" | "archived" | "deleted" | "draft"
+  version: number
   viewCount?: number
-  status?: "active" | "archived" | "deleted"
+  downloadCount?: number
 }
 
 export interface DocumentActivity {
@@ -46,17 +35,24 @@ export interface DocumentActivity {
   details?: string
 }
 
-export interface DocumentType {
-  id: string
-  name: string
-  count: number
-  percentage: number
-  color: string
+export interface DocumentFilter {
+  projectId?: string
+  taskId?: string
+  fileType?: string
+  status?: string
+  searchQuery?: string
+  tags?: string[]
 }
 
 export interface DocumentStatistics {
   totalDocuments: number
-  documentsByType: DocumentType[]
+  documentsByType: {
+    id: string
+    name: string
+    count: number
+    percentage: number
+    color: string
+  }[]
   documentsByTask: {
     taskId: string
     taskName: string
@@ -64,34 +60,4 @@ export interface DocumentStatistics {
     percentage: number
   }[]
   recentActivity: DocumentActivity[]
-}
-
-export interface Document {
-  id: string
-  name: string
-  description?: string
-  fileUrl: string
-  fileType: string
-  fileSize: number
-  uploadedBy: string
-  uploadedAt: string
-  projectId: string
-  taskId?: string
-  tags?: string[]
-  lastModified?: string
-  version?: number
-  status?: "draft" | "final" | "archived"
-}
-
-export interface DocumentFilter {
-  projectId?: string
-  taskId?: string
-  type?: string
-  tags?: string[]
-  uploadedBy?: string
-  dateFrom?: Date
-  dateTo?: Date
-  searchQuery?: string
-  fileType?: string
-  status?: string
 }
