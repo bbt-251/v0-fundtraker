@@ -1,7 +1,22 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
-import { Filter, CheckCircle, Clock, AlertTriangle, XCircle, PauseCircle, Edit, Loader2 } from "lucide-react"
+import type React from "react"
+
+import { useState, useEffect, useCallback, useRef } from "react"
+import {
+  Filter,
+  CheckCircle,
+  Clock,
+  AlertTriangle,
+  XCircle,
+  PauseCircle,
+  Edit,
+  Loader2,
+  Paperclip,
+  Upload,
+  File,
+  Trash2,
+} from "lucide-react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -14,6 +29,9 @@ import type { ProjectTask } from "@/types/project"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { message } from "antd"
 import { getTeamMembers } from "@/services/team-member-service"
+import { uploadTaskAttachment, deleteTaskAttachment } from "@/services/task-service"
+import type { TaskAttachment } from "@/types/task"
+import { Input } from "@/components/ui/input"
 
 // Define task status types
 type TaskStatus = "Not Started" | "In Progress" | "Completed" | "Blocked" | "Postponed"
@@ -69,6 +87,17 @@ export function DailyActivityTracking({ initialDate, onDateChange, projectId }: 
   const [editPriority, setEditPriority] = useState<TaskPriority>("Medium") // Default value
   const [editAssignee, setEditAssignee] = useState<string>("")
 
+  // Add state for attachments
+  const [attachments, setAttachments] = useState<TaskAttachment[]>([])
+  const [uploadingAttachment, setUploadingAttachment] = useState(false)
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Add state for attachments modal
+  const [attachmentsModalOpen, setAttachmentsModalOpen] = useState(false)
+  const [viewingTaskAttachments, setViewingTaskAttachments] = useState<TaskAttachment[]>([])
+  const [viewingTaskName, setViewingTaskName] = useState("")
+
   // Create message API
   const [messageApi, contextHolder] = message.useMessage()
 
@@ -109,6 +138,12 @@ export function DailyActivityTracking({ initialDate, onDateChange, projectId }: 
           const projectData = projectDoc.data()
           const projectTasks = projectData.tasks || []
           const projectName = projectData.name || "Unnamed Project"
+
+          // Ensure projectTasks is an array before using forEach
+          if (!Array.isArray(projectTasks)) {
+            console.warn(`Project ${projectDoc.id} has invalid tasks data:`, projectTasks)
+            continue // Skip this project and move to the next one
+          }
 
           // Process each task in the project
           projectTasks.forEach((task: ProjectTask) => {
@@ -215,7 +250,15 @@ export function DailyActivityTracking({ initialDate, onDateChange, projectId }: 
     setEditStatus((task.status as TaskStatus) || "Not Started")
     setEditPriority((task.priority as TaskPriority) || "Medium")
     setEditAssignee(task.assignee || "")
+    setAttachments(task.attachments || [])
     setEditModalOpen(true)
+  }, [])
+
+  // Function to open the attachments modal
+  const openAttachmentsModal = useCallback((task: ExtendedTask) => {
+    setViewingTaskAttachments(task.attachments || [])
+    setViewingTaskName(task.name)
+    setAttachmentsModalOpen(true)
   }, [])
 
   // Function to save the edited task - use useCallback to memoize
@@ -242,7 +285,13 @@ export function DailyActivityTracking({ initialDate, onDateChange, projectId }: 
       }
 
       const projectData = projectSnap.data()
-      const projectTasks = projectData.tasks || []
+
+      // Ensure tasks is an array
+      if (!projectData.tasks || !Array.isArray(projectData.tasks)) {
+        throw new Error("Project tasks data structure is invalid")
+      }
+
+      const projectTasks = projectData.tasks
 
       // Find the selected assignee option
       const selectedAssignee = assignees.find((a) => a.value === editAssignee)
@@ -270,6 +319,7 @@ export function DailyActivityTracking({ initialDate, onDateChange, projectId }: 
           // Only set fields that have valid values
           updatedTask.status = editStatus
           updatedTask.priority = editPriority
+          updatedTask.attachments = attachments
 
           // Only update assignee if it's not empty
           if (editAssignee && editAssignee !== "unassigned") {
@@ -300,6 +350,7 @@ export function DailyActivityTracking({ initialDate, onDateChange, projectId }: 
               ...task,
               status: editStatus,
               priority: editPriority,
+              attachments: attachments,
             }
 
             if (editAssignee && editAssignee !== "unassigned") {
@@ -335,20 +386,110 @@ export function DailyActivityTracking({ initialDate, onDateChange, projectId }: 
       loadingMessage()
 
       // Show error message
-      messageApi.error("Failed to update task. Please try again.")
+      messageApi.error(`Failed to update task: ${error instanceof Error ? error.message : "Unknown error"}`)
     } finally {
       // Reset loading state
       setIsSaving(false)
     }
-  }, [currentTask, editStatus, editPriority, editAssignee, messageApi, tasks, assignees])
+  }, [currentTask, editStatus, editPriority, editAssignee, messageApi, tasks, assignees, attachments])
+
+  // Handle file selection
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setSelectedFile(e.target.files[0])
+    }
+  }
+
+  // Handle file upload
+  const handleUploadAttachment = async () => {
+    if (!selectedFile || !currentTask) return
+
+    try {
+      setUploadingAttachment(true)
+
+      // Show loading message
+      const loadingMessage = messageApi.loading("Uploading attachment...", 0)
+
+      try {
+        const newAttachment = await uploadTaskAttachment(currentTask.projectId, currentTask.id, selectedFile)
+
+        // Update local state with the new attachment
+        setAttachments((prev) => [...prev, newAttachment])
+
+        // Reset file input
+        setSelectedFile(null)
+        if (fileInputRef.current) {
+          fileInputRef.current.value = ""
+        }
+
+        // Close loading message
+        loadingMessage()
+
+        // Show success message
+        messageApi.success("Attachment uploaded successfully")
+      } catch (error) {
+        console.error("Error uploading attachment:", error)
+
+        // Close loading message
+        loadingMessage()
+
+        // Show error message with details
+        messageApi.error(`Failed to upload attachment: ${error instanceof Error ? error.message : "Unknown error"}`)
+      }
+    } finally {
+      setUploadingAttachment(false)
+    }
+  }
+
+  // Handle attachment deletion
+  const handleDeleteAttachment = async (attachmentId: string) => {
+    if (!currentTask) return
+
+    try {
+      // Show loading message
+      const loadingMessage = messageApi.loading("Deleting attachment...", 0)
+
+      try {
+        await deleteTaskAttachment(currentTask.projectId, currentTask.id, attachmentId)
+
+        // Update local state by removing the deleted attachment
+        setAttachments((prev) => prev.filter((attachment) => attachment.id !== attachmentId))
+
+        // Close loading message
+        loadingMessage()
+
+        // Show success message
+        messageApi.success("Attachment deleted successfully")
+      } catch (error) {
+        console.error("Error deleting attachment:", error)
+
+        // Close loading message
+        loadingMessage()
+
+        // Show error message with details
+        messageApi.error(`Failed to delete attachment: ${error instanceof Error ? error.message : "Unknown error"}`)
+      }
+    } catch (error) {
+      console.error("Error in handleDeleteAttachment:", error)
+    }
+  }
+
+  // Format file size for display
+  const formatFileSize = (bytes: number) => {
+    if (bytes < 1024) return bytes + " bytes"
+    else if (bytes < 1048576) return (bytes / 1024).toFixed(1) + " KB"
+    else return (bytes / 1048576).toFixed(1) + " MB"
+  }
 
   // Check if a task is scheduled for the selected date
   const isTaskOnDate = (task: ProjectTask, selectedDate: Date): boolean => {
     try {
       // If task has multiple date ranges
-      if (task.multipleRanges && task.dateRanges && task.dateRanges.length > 0) {
+      if (task.multipleRanges && task.dateRanges && Array.isArray(task.dateRanges) && task.dateRanges.length > 0) {
         // Check if the selected date falls within any of the date ranges
         return task.dateRanges.some((range) => {
+          if (!range.startDate || !range.endDate) return false
+
           const startDate = parseISO(range.startDate)
           const endDate = parseISO(range.endDate)
           return isWithinInterval(selectedDate, { start: startDate, end: endDate })
@@ -363,7 +504,7 @@ export function DailyActivityTracking({ initialDate, onDateChange, projectId }: 
 
       return false
     } catch (error) {
-      console.error("Error checking task date:", error)
+      console.error("Error checking task date:", error, task)
       return false
     }
   }
@@ -402,7 +543,13 @@ export function DailyActivityTracking({ initialDate, onDateChange, projectId }: 
         }
 
         const projectData = projectSnap.data()
-        const projectTasks = projectData.tasks || []
+
+        // Ensure tasks is an array
+        if (!projectData.tasks || !Array.isArray(projectData.tasks)) {
+          throw new Error("Project tasks data structure is invalid")
+        }
+
+        const projectTasks = projectData.tasks
 
         // Find and update the task
         const updatedTasks = projectTasks.map((task: ProjectTask) =>
@@ -426,7 +573,7 @@ export function DailyActivityTracking({ initialDate, onDateChange, projectId }: 
         console.error("Error updating task status:", error)
         toast({
           title: "Error",
-          description: "Failed to update task status. Please try again.",
+          description: `Failed to update task status: ${error instanceof Error ? error.message : "Unknown error"}`,
           variant: "destructive",
         })
       }
@@ -515,8 +662,16 @@ export function DailyActivityTracking({ initialDate, onDateChange, projectId }: 
 
         {/* Date Picker */}
         <DatePicker
-          date={date}
-          onDateChange={handleDateChange}
+          value={date}
+          onChange={(value) => {
+            // Check if value exists and convert to Date if needed
+            if (value) {
+              const newDate = new Date(value)
+              handleDateChange(newDate)
+            } else {
+              handleDateChange(null)
+            }
+          }}
           className="w-[240px]"
           placeholder="Select date"
           format="MMMM DD, YYYY"
@@ -673,16 +828,31 @@ export function DailyActivityTracking({ initialDate, onDateChange, projectId }: 
                   </div>
                 </div>
 
-                {/* Edit Button */}
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="absolute bottom-2 right-2"
-                  onClick={() => openEditModal(task)}
-                >
-                  <Edit className="h-4 w-4" />
-                  <span className="sr-only">Edit task</span>
-                </Button>
+                {/* Action Buttons */}
+                <div className="absolute bottom-2 right-2 flex space-x-1">
+                  {/* Attachments Button - only show if there are attachments */}
+                  {task.attachments && task.attachments.length > 0 && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => openAttachmentsModal(task)}
+                      className="relative"
+                      title="View attachments"
+                    >
+                      <Paperclip className="h-4 w-4" />
+                      <span className="absolute -top-2 -right-2 bg-blue-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">
+                        {task.attachments.length}
+                      </span>
+                      <span className="sr-only">View attachments</span>
+                    </Button>
+                  )}
+
+                  {/* Edit Button */}
+                  <Button variant="ghost" size="icon" onClick={() => openEditModal(task)} title="Edit task">
+                    <Edit className="h-4 w-4" />
+                    <span className="sr-only">Edit task</span>
+                  </Button>
+                </div>
               </div>
             ))
           ) : (
@@ -701,9 +871,9 @@ export function DailyActivityTracking({ initialDate, onDateChange, projectId }: 
           </DialogHeader>
 
           {currentTask && (
-            <div className="grid gap-6 py-4">
-              <div className="grid grid-cols-4 items-center gap-4">
-                <label htmlFor="task-status" className="text-gray-300 text-right">
+            <div className="space-y-4 py-2">
+              <div className="grid grid-cols-5 items-center gap-2">
+                <label htmlFor="task-status" className="text-gray-300">
                   Status
                 </label>
                 <Select
@@ -712,7 +882,7 @@ export function DailyActivityTracking({ initialDate, onDateChange, projectId }: 
                   defaultValue={editStatus}
                   disabled={isSaving}
                 >
-                  <SelectTrigger id="task-status" className="col-span-3 bg-gray-800 border-gray-700 text-white">
+                  <SelectTrigger id="task-status" className="col-span-4 bg-gray-800 border-gray-700 text-white">
                     <SelectValue placeholder="Select status" />
                   </SelectTrigger>
                   <SelectContent className="bg-gray-800 border-gray-700 text-white">
@@ -725,8 +895,8 @@ export function DailyActivityTracking({ initialDate, onDateChange, projectId }: 
                 </Select>
               </div>
 
-              <div className="grid grid-cols-4 items-center gap-4">
-                <label htmlFor="task-assignee" className="text-gray-300 text-right">
+              <div className="grid grid-cols-5 items-center gap-2">
+                <label htmlFor="task-assignee" className="text-gray-300">
                   Assignee
                 </label>
                 <Select
@@ -735,7 +905,7 @@ export function DailyActivityTracking({ initialDate, onDateChange, projectId }: 
                   defaultValue={editAssignee || "unassigned"}
                   disabled={isSaving}
                 >
-                  <SelectTrigger id="task-assignee" className="col-span-3 bg-gray-800 border-gray-700 text-white">
+                  <SelectTrigger id="task-assignee" className="col-span-4 bg-gray-800 border-gray-700 text-white">
                     <SelectValue placeholder="Select assignee" />
                   </SelectTrigger>
                   <SelectContent className="bg-gray-800 border-gray-700 text-white">
@@ -751,8 +921,8 @@ export function DailyActivityTracking({ initialDate, onDateChange, projectId }: 
                 </Select>
               </div>
 
-              <div className="grid grid-cols-4 items-center gap-4">
-                <label htmlFor="task-priority" className="text-gray-300 text-right">
+              <div className="grid grid-cols-5 items-center gap-2">
+                <label htmlFor="task-priority" className="text-gray-300">
                   Priority
                 </label>
                 <Select
@@ -761,7 +931,7 @@ export function DailyActivityTracking({ initialDate, onDateChange, projectId }: 
                   defaultValue={editPriority}
                   disabled={isSaving}
                 >
-                  <SelectTrigger id="task-priority" className="col-span-3 bg-gray-800 border-gray-700 text-white">
+                  <SelectTrigger id="task-priority" className="col-span-4 bg-gray-800 border-gray-700 text-white">
                     <SelectValue placeholder="Select priority" />
                   </SelectTrigger>
                   <SelectContent className="bg-gray-800 border-gray-700 text-white">
@@ -773,10 +943,98 @@ export function DailyActivityTracking({ initialDate, onDateChange, projectId }: 
                   </SelectContent>
                 </Select>
               </div>
+
+              {/* Attachments Section */}
+              <div className="pt-2">
+                <label className="text-gray-300 flex items-center mb-3">
+                  <Paperclip className="h-4 w-4 mr-2" />
+                  Attachments
+                </label>
+
+                {/* File Upload Input */}
+                <div className="flex items-center space-x-2 mb-4">
+                  <div className="flex-1 relative">
+                    <Button
+                      variant="outline"
+                      className="w-full bg-gray-800 border-gray-700 text-white hover:bg-gray-700 justify-start"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploadingAttachment || isSaving}
+                    >
+                      Choose File
+                      <span className="ml-2 text-gray-400 text-sm">
+                        {selectedFile ? selectedFile.name : "No file chosen"}
+                      </span>
+                    </Button>
+                    <Input
+                      ref={fileInputRef}
+                      type="file"
+                      onChange={handleFileChange}
+                      className="hidden"
+                      disabled={uploadingAttachment || isSaving}
+                    />
+                  </div>
+                  <Button
+                    onClick={handleUploadAttachment}
+                    disabled={!selectedFile || uploadingAttachment || isSaving}
+                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                    size="icon"
+                  >
+                    {uploadingAttachment ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Upload className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
+
+                {/* Attachments List */}
+                {attachments && attachments.length > 0 ? (
+                  <div className="space-y-2 max-h-40 overflow-y-auto">
+                    {attachments.map((attachment) => (
+                      <div key={attachment.id} className="flex items-center justify-between p-2 bg-gray-800 rounded-md">
+                        <div className="flex items-center space-x-2">
+                          <File className="h-4 w-4 text-blue-400" />
+                          <div>
+                            <p className="text-sm font-medium text-white">{attachment.fileName}</p>
+                            <p className="text-xs text-gray-400">{formatFileSize(attachment.fileSize)}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-1">
+                          <a
+                            href={attachment.fileUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-400 hover:text-blue-300"
+                          >
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-blue-400 hover:text-blue-300 hover:bg-gray-700 h-7 w-7 p-0"
+                            >
+                              <File className="h-3.5 w-3.5" />
+                            </Button>
+                          </a>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDeleteAttachment(attachment.id)}
+                            className="text-red-400 hover:text-red-300 hover:bg-gray-700 h-7 w-7 p-0"
+                            disabled={isSaving}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-400 text-center py-2">No attachments yet</p>
+                )}
+              </div>
             </div>
           )}
 
-          <DialogFooter className="gap-2">
+          <DialogFooter className="gap-2 pt-2">
             <Button
               variant="outline"
               onClick={() => setEditModalOpen(false)}
@@ -794,6 +1052,62 @@ export function DailyActivityTracking({ initialDate, onDateChange, projectId }: 
               ) : (
                 "Save changes"
               )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Attachments Viewing Modal */}
+      <Dialog open={attachmentsModalOpen} onOpenChange={setAttachmentsModalOpen}>
+        <DialogContent className="sm:max-w-[500px] bg-gray-900 border-gray-800 text-white">
+          <DialogHeader>
+            <DialogTitle className="text-white flex items-center">
+              <Paperclip className="h-4 w-4 mr-2" />
+              Attachments for {viewingTaskName}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="py-4">
+            {viewingTaskAttachments.length > 0 ? (
+              <div className="space-y-3 max-h-[60vh] overflow-y-auto">
+                {viewingTaskAttachments.map((attachment) => (
+                  <div key={attachment.id} className="flex items-center justify-between p-3 bg-gray-800 rounded-md">
+                    <div className="flex items-center space-x-3">
+                      <File className="h-5 w-5 text-blue-400" />
+                      <div>
+                        <p className="text-sm font-medium text-white">{attachment.fileName}</p>
+                        <p className="text-xs text-gray-400">{formatFileSize(attachment.fileSize)}</p>
+                      </div>
+                    </div>
+                    <a
+                      href={attachment.fileUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-400 hover:text-blue-300"
+                    >
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-blue-400 hover:text-blue-300 border-blue-800 hover:bg-gray-700"
+                      >
+                        Download
+                      </Button>
+                    </a>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-center py-8 text-gray-400">No attachments available</p>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setAttachmentsModalOpen(false)}
+              className="bg-transparent border-gray-700 text-white hover:bg-gray-800"
+            >
+              Close
             </Button>
           </DialogFooter>
         </DialogContent>

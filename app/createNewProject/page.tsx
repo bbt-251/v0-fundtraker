@@ -164,7 +164,7 @@ export default function CreateNewProjectPage() {
       }
 
       // Navigate to projects page
-      router.push("/projects")
+      router.push("/my-projects")
     } catch (error: any) {
       setError(error.message || "Failed to create project")
     } finally {
@@ -179,7 +179,7 @@ export default function CreateNewProjectPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center">
           <div className="flex items-center">
             <Link
-              href="/projects"
+              href="/my-projects"
               className="flex items-center text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400"
             >
               <ArrowLeft className="h-5 w-5 mr-2" />
@@ -419,7 +419,7 @@ export default function CreateNewProjectPage() {
           <div className="px-8 py-6 bg-gray-50 dark:bg-gray-700/50 flex justify-between">
             {currentStep === 1 ? (
               <Link
-                href="/projects"
+                href="/my-projects"
                 className="inline-flex items-center px-5 py-2.5 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
               >
                 Cancel

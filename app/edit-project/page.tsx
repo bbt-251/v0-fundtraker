@@ -61,7 +61,7 @@ export default function EditProjectPage() {
 
                 // Check if the project belongs to the current user
                 if (fetchedProject.userId !== user.uid) {
-                    router.push("/projects")
+                    router.push("/my-projects")
                     return
                 }
 

@@ -120,8 +120,8 @@ export default function ProjectOwnerDashboard() {
   const calculateResourceUtilization = () => {
     if (!selectedProject) return
 
-    const activities = selectedProject.activities || []
-    const tasks = selectedProject.tasks || []
+    const activities = Array.isArray(selectedProject.activities) ? selectedProject.activities : []
+    const tasks = Array.isArray(selectedProject.tasks) ? selectedProject.tasks : []
 
     // Calculate total project cost
     const humanResourceTotal = calculateHumanResourceTotal()
@@ -186,7 +186,9 @@ export default function ProjectOwnerDashboard() {
   const getActivityDueDate = (activityId: string) => {
     if (!selectedProject) return null
 
-    const activityTasks = selectedProject.tasks.filter((task) => task.activityId === activityId)
+    const activityTasks = Array.isArray(selectedProject.tasks)
+      ? selectedProject.tasks.filter((task) => task.activityId === activityId)
+      : []
 
     if (activityTasks.length === 0) return null
 
@@ -214,7 +216,9 @@ export default function ProjectOwnerDashboard() {
   const calculateActivityProgress = (activityId: string) => {
     if (!selectedProject) return 0
 
-    const activityTasks = selectedProject.tasks.filter((task) => task.activityId === activityId)
+    const activityTasks = Array.isArray(selectedProject.tasks)
+      ? selectedProject.tasks.filter((task) => task.activityId === activityId)
+      : []
 
     if (activityTasks.length === 0) return 0
 
@@ -450,28 +454,32 @@ export default function ProjectOwnerDashboard() {
     // Handle based on type
     if (task.type === "project") {
       // Find the activity
-      const activity = selectedProject?.activities.find((a) => a.id === task.id)
+      const activities = Array.isArray(selectedProject?.activities) ? selectedProject?.activities : []
+      const activity = activities.find((a) => a.id === task.id)
       if (activity) {
         setSelectedActivity(activity)
         setActivityModalOpen(true)
       }
     } else if (task.type === "task") {
       // Find the task
-      const projectTask = selectedProject?.tasks.find((t) => t.id === task.id)
+      const tasks = Array.isArray(selectedProject?.tasks) ? selectedProject?.tasks : []
+      const projectTask = tasks.find((t) => t.id === task.id)
       if (projectTask) {
         setSelectedTask(projectTask)
         setTaskModalOpen(true)
       }
     } else if (task.type === "milestone") {
       // Check if it's a deliverable or decision gate
-      const deliverable = selectedProject?.deliverables.find((d) => d.id === task.id)
+      const deliverables = Array.isArray(selectedProject?.deliverables) ? selectedProject?.deliverables : []
+      const deliverable = deliverables.find((d) => d.id === task.id)
       if (deliverable) {
         setSelectedDeliverable(deliverable)
         setDeliverableModalOpen(true)
         return
       }
 
-      const decisionGate = selectedProject?.decisionGates?.find((dg) => dg.id === task.id)
+      const decisionGates = Array.isArray(selectedProject?.decisionGates) ? selectedProject?.decisionGates : []
+      const decisionGate = decisionGates.find((dg) => dg.id === task.id)
       if (decisionGate) {
         setSelectedDecisionGate(decisionGate)
         setDecisionGateModalOpen(true)
@@ -638,10 +646,10 @@ export default function ProjectOwnerDashboard() {
           </CardHeader>
           <CardContent>
             <GanttChart
-              tasks={selectedProject?.tasks ?? []}
-              activities={selectedProject?.activities ?? []}
-              deliverables={selectedProject?.deliverables ?? []}
-              decisionGates={selectedProject?.decisionGates ?? []}
+              tasks={Array.isArray(selectedProject?.tasks) ? selectedProject.tasks : []}
+              activities={Array.isArray(selectedProject?.activities) ? selectedProject.activities : []}
+              deliverables={Array.isArray(selectedProject?.deliverables) ? selectedProject.deliverables : []}
+              decisionGates={Array.isArray(selectedProject?.decisionGates) ? selectedProject.decisionGates : []}
               chartLoading={false}
               onElementClick={handleElementClick}
             />
@@ -656,29 +664,31 @@ export default function ProjectOwnerDashboard() {
           </CardHeader>
           <CardContent>
             <div className="space-y-8">
-              {selectedProject?.activities?.slice(0, 4).map((activity, index) => {
-                const dueDate = getActivityDueDate(activity.id)
-                const progress = calculateActivityProgress(activity.id)
-                const activityTasks = selectedProject.tasks.filter((task) => task.activityId === activity.id)
+              {selectedProject && Array.isArray(selectedProject.activities) && selectedProject.activities.length > 0 ? (
+                selectedProject.activities.slice(0, 4).map((activity, index) => {
+                  const dueDate = getActivityDueDate(activity.id)
+                  const progress = calculateActivityProgress(activity.id)
+                  const activityTasks = Array.isArray(selectedProject.tasks)
+                    ? selectedProject.tasks.filter((task) => task.activityId === activity.id)
+                    : []
 
-                return (
-                  <div key={index} className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm font-medium">{activity.name}</p>
-                      <span className="text-sm font-medium">
-                        {progress}% ({activityTasks.filter((t) => t.status === "Completed").length}/
-                        {activityTasks.length} tasks)
-                      </span>
+                  return (
+                    <div key={index} className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-medium">{activity.name}</p>
+                        <span className="text-sm font-medium">
+                          {progress}% ({activityTasks.filter((t) => t.status === "Completed").length}/
+                          {activityTasks.length} tasks)
+                        </span>
+                      </div>
+                      <Progress value={progress} className="h-2" />
+                      <div className="text-xs text-muted-foreground">
+                        <span>Due: {dueDate ? dueDate.toLocaleDateString() : "No tasks"}</span>
+                      </div>
                     </div>
-                    <Progress value={progress} className="h-2" />
-                    <div className="text-xs text-muted-foreground">
-                      <span>Due: {dueDate ? dueDate.toLocaleDateString() : "No tasks"}</span>
-                    </div>
-                  </div>
-                )
-              })}
-
-              {(!selectedProject?.activities || selectedProject.activities.length === 0) && (
+                  )
+                })
+              ) : (
                 <div className="text-center py-4 text-muted-foreground">
                   No activities defined for this project yet.
                 </div>

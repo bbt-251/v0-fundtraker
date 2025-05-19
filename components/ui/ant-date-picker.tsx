@@ -14,6 +14,7 @@ interface CustomDatePickerProps extends Omit<DatePickerProps, "onChange"> {
 export function DatePicker({ value, onChange, format = "YYYY-MM-DD", className, ...props }: CustomDatePickerProps) {
   const handleChange: DatePickerProps["onChange"] = (date, dateString) => {
     if (onChange) {
+      // Pass the selected date string to the parent component
       onChange(date ? date.toDate() : null)
     }
   }

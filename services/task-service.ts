@@ -132,10 +132,25 @@ export async function uploadTaskAttachment(projectId: string, taskId: string, fi
     }
 
     const projectData = projectSnap.data() as Project
+
+    // Ensure tasks is an array
+    if (!projectData.tasks || !Array.isArray(projectData.tasks)) {
+      console.error("Project tasks is not an array:", projectData.tasks)
+      throw new Error("Project tasks data structure is invalid")
+    }
+
+    // Find the task index
     const taskIndex = projectData.tasks.findIndex((task) => task.id === taskId)
 
     if (taskIndex === -1) {
       throw new Error(`Task with ID ${taskId} not found`)
+    }
+
+    // Initialize attachments array if it doesn't exist
+    if (!projectData.tasks[taskIndex].attachments) {
+      await updateDoc(projectRef, {
+        [`tasks.${taskIndex}.attachments`]: [],
+      })
     }
 
     // Update the task's attachments array
@@ -167,6 +182,13 @@ export async function deleteTaskAttachment(projectId: string, taskId: string, at
     }
 
     const projectData = projectSnap.data() as Project
+
+    // Ensure tasks is an array
+    if (!projectData.tasks || !Array.isArray(projectData.tasks)) {
+      console.error("Project tasks is not an array:", projectData.tasks)
+      throw new Error("Project tasks data structure is invalid")
+    }
+
     const taskIndex = projectData.tasks.findIndex((task) => task.id === taskId)
 
     if (taskIndex === -1) {
@@ -175,7 +197,14 @@ export async function deleteTaskAttachment(projectId: string, taskId: string, at
 
     // Find the attachment to delete
     const task = projectData.tasks[taskIndex]
-    const attachment = task.attachments?.find((att) => att.id === attachmentId)
+
+    // Check if attachments array exists
+    if (!task.attachments || !Array.isArray(task.attachments)) {
+      console.error("Task attachments is not an array:", task.attachments)
+      throw new Error("Task attachments data structure is invalid")
+    }
+
+    const attachment = task.attachments.find((att) => att.id === attachmentId)
 
     if (!attachment) {
       throw new Error(`Attachment with ID ${attachmentId} not found`)

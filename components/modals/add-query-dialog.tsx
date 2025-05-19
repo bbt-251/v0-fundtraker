@@ -73,10 +73,19 @@ export function AddQueryDialog({ onAddQuery, teamMembers, projectId }: AddQueryD
     e.preventDefault()
   }
 
+  const handleAddCategory = () => {
+    if (newCategory.trim() !== "") {
+      setExistingCategories([...existingCategories, newCategory])
+      setCategory(newCategory)
+      setNewCategory("")
+      setShowAddCategory(false)
+    }
+  }
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline">
+        <Button variant="outline" onClick={() => setOpen(true)}>
           <Plus className="mr-2 h-4 w-4" />
           Add Query
         </Button>
