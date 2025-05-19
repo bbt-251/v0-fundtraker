@@ -1,5 +1,7 @@
 "use client"
 
+import type React from "react"
+
 import { useState, useEffect } from "react"
 import { useAuth } from "@/contexts/auth-context"
 import {
@@ -9,8 +11,10 @@ import {
   downloadDocument,
   getDocumentStatistics,
   formatFileSize,
+  uploadDocument,
 } from "@/services/document-service"
 import { getProjectsByOwner } from "@/services/project-service"
+import { getTasks } from "@/services/task-service"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -36,9 +40,19 @@ import {
   Plus,
 } from "lucide-react"
 import { ConfirmationModal } from "@/components/confirmation-modal"
-import { UploadDocumentDialog } from "./upload-document-dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import type { Document, DocumentFilter, DocumentStatistics } from "@/types/document"
 import type { Project } from "@/types/project"
+import type { Task } from "@/types/task"
 
 export default function DocumentManagement() {
   const { user } = useAuth()
@@ -47,6 +61,7 @@ export default function DocumentManagement() {
   // State for documents and projects
   const [documents, setDocuments] = useState<Document[]>([])
   const [projects, setProjects] = useState<Project[]>([])
+  const [tasks, setTasks] = useState<Task[]>([])
   const [statistics, setStatistics] = useState<DocumentStatistics | null>(null)
 
   // State for selected filters
@@ -61,6 +76,27 @@ export default function DocumentManagement() {
   const [documentDetailsOpen, setDocumentDetailsOpen] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [documentToDelete, setDocumentToDelete] = useState<Document | null>(null)
+
+  // State for file upload
+  const [file, setFile] = useState<File | null>(null)
+  const [uploadProgress, setUploadProgress] = useState(0)
+  const [isUploading, setIsUploading] = useState(false)
+  const [documentName, setDocumentName] = useState("")
+  const [documentDescription, setDocumentDescription] = useState("")
+  const [documentTags, setDocumentTags] = useState("")
+  const [documentTaskId, setDocumentTaskId] = useState("none")
+  const [documentType, setDocumentType] = useState("")
+  const [isAddingNewType, setIsAddingNewType] = useState(false)
+  const [newDocumentType, setNewDocumentType] = useState("")
+  const [documentTypes, setDocumentTypes] = useState([
+    "Contract",
+    "Invoice",
+    "Document",
+    "Notes",
+    "Diagram",
+    "Documentation",
+    "Design",
+  ])
 
   // Loading states
   const [isLoading, setIsLoading] = useState(true)
@@ -95,6 +131,24 @@ export default function DocumentManagement() {
 
     fetchProjects()
   }, [user, toast, selectedProjectId])
+
+  // Fetch tasks when project changes
+  useEffect(() => {
+    const fetchTasks = async () => {
+      try {
+        if (!selectedProjectId || selectedProjectId === "default") return
+
+        const fetchedTasks = await getTasks(selectedProjectId)
+        setTasks(fetchedTasks)
+      } catch (error) {
+        console.error("Error fetching tasks:", error)
+      }
+    }
+
+    if (selectedProjectId && selectedProjectId !== "default") {
+      fetchTasks()
+    }
+  }, [selectedProjectId])
 
   // Fetch documents and statistics when filters change
   useEffect(() => {
@@ -148,12 +202,86 @@ export default function DocumentManagement() {
     fetchDocuments()
   }, [selectedProjectId, selectedTaskId, selectedDocType, searchQuery, toast])
 
-  // Handle document refresh after upload
-  const handleDocumentUploadComplete = async () => {
-    try {
-      if (!selectedProjectId || selectedProjectId === "default") return
+  // Reset upload form when dialog opens/closes
+  useEffect(() => {
+    if (uploadDialogOpen) {
+      setFile(null)
+      setDocumentName("")
+      setDocumentDescription("")
+      setDocumentTags("")
+      setDocumentTaskId("none")
+      setDocumentType("")
+      setUploadProgress(0)
+      setIsAddingNewType(false)
+      setNewDocumentType("")
+    }
+  }, [uploadDialogOpen])
 
-      // Prepare filter
+  // Handle file change
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const selectedFile = e.target.files[0]
+      setFile(selectedFile)
+
+      // Auto-fill name if not already set
+      if (!documentName) {
+        setDocumentName(selectedFile.name)
+      }
+    }
+  }
+
+  // Handle document upload
+  const handleUploadDocument = async (e?: React.FormEvent) => {
+    if (e) {
+      e.preventDefault()
+    }
+
+    if (!file || !selectedProjectId || selectedProjectId === "default" || !user) {
+      toast({
+        title: "Missing information",
+        description: "Please select a file and project.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setIsUploading(true)
+
+    try {
+      // Parse tags
+      const tags = documentTags
+        .split(",")
+        .map((tag) => tag.trim())
+        .filter((tag) => tag)
+
+      // Upload document
+      await uploadDocument(
+        file,
+        {
+          name: documentName || file.name,
+          description: documentDescription,
+          projectId: selectedProjectId,
+          // Only set taskId if it's not "none"
+          taskId: documentTaskId !== "none" ? documentTaskId : undefined,
+          tags,
+          type: documentType || "Document", // Use the selected document type
+          uploadedBy: {
+            id: user.uid,
+            name: user.displayName || user.email || "User",
+            email: user.email || "",
+          },
+        },
+        (progress) => {
+          setUploadProgress(progress)
+        },
+      )
+
+      toast({
+        title: "Document uploaded",
+        description: "Your document has been uploaded successfully.",
+      })
+
+      // Refresh documents
       const filter: DocumentFilter = {
         projectId: selectedProjectId,
         status: "active",
@@ -163,26 +291,46 @@ export default function DocumentManagement() {
         filter.taskId = selectedTaskId
       }
 
-      // Fetch documents
       const fetchedDocuments = await getDocuments(filter)
       setDocuments(fetchedDocuments)
 
-      // Fetch statistics
-      const stats = await getDocumentStatistics(selectedProjectId)
-      setStatistics(stats)
+      // Close dialog
+      setUploadDialogOpen(false)
     } catch (error) {
-      console.error("Error refreshing documents:", error)
+      console.error("Error uploading document:", error)
+      toast({
+        title: "Upload failed",
+        description: "Failed to upload document. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsUploading(false)
     }
   }
 
+  // Handle document update
+  const handleDocumentUpdate = (updatedDoc: Document) => {
+    // Update the document in the documents array
+    setDocuments((prevDocs) => prevDocs.map((doc) => (doc.id === updatedDoc.id ? updatedDoc : doc)))
+
+    // Close the details modal
+    setDocumentDetailsOpen(false)
+    setSelectedDocument(null)
+
+    toast({
+      title: "Document updated",
+      description: "Document details have been updated successfully.",
+    })
+  }
+
   // Handle document actions
-  const handleViewDocument = async (document: Document) => {
+  const handleViewDocument = async (doc: Document) => {
     if (!user) return
 
     setIsActionLoading(true)
 
     try {
-      const url = await viewDocument(document.id, user.uid, user.displayName || user.email || "User")
+      const url = await viewDocument(doc.id, user.uid, user.displayName || user.email || "User")
 
       if (url) {
         window.open(url, "_blank")
@@ -206,19 +354,19 @@ export default function DocumentManagement() {
     }
   }
 
-  const handleDownloadDocument = async (document: Document) => {
+  const handleDownloadDocument = async (doc: Document) => {
     if (!user) return
 
     setIsActionLoading(true)
 
     try {
-      const url = await downloadDocument(document.id, user.uid, user.displayName || user.email || "User")
+      const url = await downloadDocument(doc.id, user.uid, user.displayName || user.email || "User")
 
       if (url) {
         // Create a temporary link to trigger download
         const a = document.createElement("a")
         a.href = url
-        a.download = document.name
+        a.download = doc.name
         document.body.appendChild(a)
         a.click()
         document.body.removeChild(a)
@@ -281,6 +429,23 @@ export default function DocumentManagement() {
     }
   }
 
+  // Handle adding a new document type
+  const handleAddNewDocumentType = () => {
+    if (newDocumentType.trim()) {
+      // Add the new type to the list if it doesn't already exist
+      if (!documentTypes.includes(newDocumentType.trim())) {
+        setDocumentTypes((prev) => [...prev, newDocumentType.trim()])
+      }
+
+      // Set the current document type to the new type
+      setDocumentType(newDocumentType.trim())
+
+      // Reset the new type input and exit adding mode
+      setNewDocumentType("")
+      setIsAddingNewType(false)
+    }
+  }
+
   // Get file icon based on file type
   const getFileIcon = (fileType: string) => {
     if (fileType.includes("image")) return <FileImage className="h-5 w-5" />
@@ -310,6 +475,27 @@ export default function DocumentManagement() {
     } catch (error) {
       return "Invalid date"
     }
+  }
+
+  // Get task name by ID
+  const getTaskName = (taskId?: string): string => {
+    if (!taskId) return "No task"
+
+    const task = tasks.find((t) => t.id === taskId)
+    return task ? `${task.taskId}: ${task.title}` : "Unknown task"
+  }
+
+  // Get uploader name
+  const getUploaderName = (uploader: any): string => {
+    if (!uploader) return "Unknown"
+
+    if (typeof uploader === "string") return uploader
+
+    if (typeof uploader === "object") {
+      return uploader.name || uploader.email || "Unknown"
+    }
+
+    return "Unknown"
   }
 
   return (
@@ -342,6 +528,11 @@ export default function DocumentManagement() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Tasks</SelectItem>
+                  {tasks.map((task) => (
+                    <SelectItem key={task.id} value={task.id}>
+                      {task.taskId}: {task.title}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
 
@@ -450,7 +641,7 @@ export default function DocumentManagement() {
                               <span className="ml-2 font-medium">{doc.name}</span>
                             </div>
                           </td>
-                          <td className="py-3">{doc.taskId ? `Task ${doc.taskId}` : "No task"}</td>
+                          <td className="py-3">{getTaskName(doc.taskId)}</td>
                           <td className="py-3">
                             <Badge variant="outline">{doc.type || doc.fileType.split("/")[1] || doc.fileType}</Badge>
                           </td>
@@ -458,7 +649,7 @@ export default function DocumentManagement() {
                           <td className="py-3">
                             <div>
                               <div>{formatDate(doc.uploadedAt)}</div>
-                              <div className="text-xs text-muted-foreground">{doc.uploadedBy.name}</div>
+                              <div className="text-xs text-muted-foreground">{getUploaderName(doc.uploadedBy)}</div>
                             </div>
                           </td>
                           <td className="py-3 text-right">
@@ -574,7 +765,7 @@ export default function DocumentManagement() {
                       statistics.documentsByTask.map((task) => (
                         <div key={task.taskId} className="space-y-2">
                           <div className="flex items-center justify-between">
-                            <span className="font-medium">{task.taskName}</span>
+                            <span className="font-medium">{getTaskName(task.taskId)}</span>
                             <span>{task.count}</span>
                           </div>
                           <div className="h-2 w-full bg-secondary rounded-full overflow-hidden">
@@ -607,7 +798,10 @@ export default function DocumentManagement() {
                           </div>
                           <div>
                             <p className="text-sm font-medium">
-                              {activity.actionBy.name} {activity.actionType}ed a document
+                              {typeof activity.actionBy === "string"
+                                ? activity.actionBy
+                                : activity.actionBy?.name || "Unknown user"}{" "}
+                              {activity.actionType}ed a document
                             </p>
                             <p className="text-xs text-muted-foreground">{formatDate(activity.actionDate)}</p>
                           </div>
@@ -625,12 +819,324 @@ export default function DocumentManagement() {
       )}
 
       {/* Upload Document Dialog */}
-      <UploadDocumentDialog
-        isOpen={uploadDialogOpen}
-        onClose={() => setUploadDialogOpen(false)}
-        onUploadComplete={handleDocumentUploadComplete}
-        selectedProjectId={selectedProjectId !== "default" ? selectedProjectId : ""}
-      />
+      <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle>Upload New Document</DialogTitle>
+            <DialogDescription>Upload a document and associate it with a specific task.</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleUploadDocument}>
+            <div className="grid gap-4 py-4 max-h-[70vh] overflow-y-auto pr-2">
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="taskId" className="text-right">
+                  Task
+                </Label>
+                <Select value={documentTaskId} onValueChange={setDocumentTaskId}>
+                  <SelectTrigger className="col-span-3">
+                    <SelectValue placeholder="Select task" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">None</SelectItem>
+                    {tasks.map((task) => (
+                      <SelectItem key={task.id} value={task.id}>
+                        {task.taskId}: {task.title}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="docName" className="text-right">
+                  Document Name
+                </Label>
+                <Input
+                  id="docName"
+                  placeholder="Enter document name (or use filename)"
+                  className="col-span-3"
+                  value={documentName}
+                  onChange={(e) => setDocumentName(e.target.value)}
+                />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="docType" className="text-right">
+                  Document Type
+                </Label>
+                {isAddingNewType ? (
+                  <div className="col-span-3 flex gap-2">
+                    <Input
+                      id="newDocType"
+                      placeholder="Enter new document type"
+                      value={newDocumentType}
+                      onChange={(e) => setNewDocumentType(e.target.value)}
+                      className="flex-1"
+                    />
+                    <Button type="button" variant="outline" onClick={handleAddNewDocumentType}>
+                      Add
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => {
+                        setIsAddingNewType(false)
+                        setNewDocumentType("")
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="col-span-3 flex gap-2">
+                    <Select value={documentType} onValueChange={setDocumentType}>
+                      <SelectTrigger className="flex-1">
+                        <SelectValue placeholder="Select document type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {documentTypes.map((type) => (
+                          <SelectItem key={type} value={type}>
+                            {type}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button type="button" variant="outline" onClick={() => setIsAddingNewType(true)}>
+                      Add New Type
+                    </Button>
+                  </div>
+                )}
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="tags" className="text-right">
+                  Tags
+                </Label>
+                <Input
+                  id="tags"
+                  placeholder="Enter tags separated by commas"
+                  className="col-span-3"
+                  value={documentTags}
+                  onChange={(e) => setDocumentTags(e.target.value)}
+                />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="uploadedBy" className="text-right">
+                  Uploaded By
+                </Label>
+                <Input
+                  id="uploadedBy"
+                  placeholder="Your name"
+                  className="col-span-3"
+                  value={user?.displayName || user?.email || ""}
+                  readOnly
+                />
+              </div>
+              <div className="grid grid-cols-4 items-start gap-4">
+                <Label htmlFor="description" className="text-right pt-2">
+                  Description
+                </Label>
+                <Textarea
+                  id="description"
+                  placeholder="Add a description"
+                  className="col-span-3"
+                  rows={3}
+                  value={documentDescription}
+                  onChange={(e) => setDocumentDescription(e.target.value)}
+                />
+              </div>
+              <div className="grid grid-cols-4 items-start gap-4">
+                <Label htmlFor="file" className="text-right pt-2">
+                  File
+                </Label>
+                <div className="col-span-3">
+                  <div className="flex items-center justify-center w-full">
+                    <label
+                      htmlFor="dropzone-file"
+                      className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-lg cursor-pointer bg-muted/50 hover:bg-muted"
+                    >
+                      <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                        {file ? (
+                          <div>
+                            <FileText className="w-8 h-8 mb-3 text-green-600" />
+                            <p className="mb-2 text-sm font-semibold">{file.name}</p>
+                            <p className="text-xs text-muted-foreground">{formatFileSize(file.size)}</p>
+                          </div>
+                        ) : (
+                          <div>
+                            <Upload className="w-8 h-8 mb-3 text-muted-foreground" />
+                            <p className="mb-2 text-sm text-muted-foreground">
+                              <span className="font-semibold">Click to upload</span> or drag and drop
+                            </p>
+                            <p className="text-xs text-muted-foreground">PDF, DOCX, XLSX, PNG, JPG (MAX. 20MB)</p>
+                          </div>
+                        )}
+                      </div>
+                      <input id="dropzone-file" type="file" className="hidden" onChange={handleFileChange} />
+                    </label>
+                  </div>
+                </div>
+              </div>
+              {isUploading && (
+                <div className="col-span-4 space-y-2">
+                  <div className="flex justify-between text-xs">
+                    <span>Uploading...</span>
+                    <span>{Math.round(uploadProgress)}%</span>
+                  </div>
+                  <progress value={uploadProgress} max="100" className="w-full h-2" />
+                </div>
+              )}
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setUploadDialogOpen(false)} disabled={isUploading}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={!file || isUploading}>
+                {isUploading ? "Uploading..." : "Upload Document"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Document Details Modal */}
+      {selectedDocument && (
+        <Dialog
+          open={documentDetailsOpen}
+          onOpenChange={(open) => {
+            if (!open) {
+              setDocumentDetailsOpen(false)
+              setSelectedDocument(null)
+            }
+          }}
+        >
+          <DialogContent className="sm:max-w-[600px]">
+            <DialogHeader>
+              <DialogTitle>Edit Document Details</DialogTitle>
+              <DialogDescription>Update the details for this document.</DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="edit-name" className="text-right">
+                  Document Name
+                </Label>
+                <Input
+                  id="edit-name"
+                  value={selectedDocument.name}
+                  onChange={(e) => {
+                    setSelectedDocument({
+                      ...selectedDocument,
+                      name: e.target.value,
+                    })
+                  }}
+                  className="col-span-3"
+                />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="edit-type" className="text-right">
+                  Document Type
+                </Label>
+                <Select
+                  value={selectedDocument.type || ""}
+                  onValueChange={(value) => {
+                    setSelectedDocument({
+                      ...selectedDocument,
+                      type: value,
+                    })
+                  }}
+                >
+                  <SelectTrigger className="col-span-3">
+                    <SelectValue placeholder="Select document type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {documentTypes.map((type) => (
+                      <SelectItem key={type} value={type}>
+                        {type}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="edit-task" className="text-right">
+                  Task
+                </Label>
+                <Select
+                  value={selectedDocument.taskId || "none"}
+                  onValueChange={(value) => {
+                    setSelectedDocument({
+                      ...selectedDocument,
+                      taskId: value === "none" ? undefined : value,
+                    })
+                  }}
+                >
+                  <SelectTrigger className="col-span-3">
+                    <SelectValue placeholder="Select task" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">None</SelectItem>
+                    {tasks.map((task) => (
+                      <SelectItem key={task.id} value={task.id}>
+                        {task.taskId}: {task.title}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="edit-tags" className="text-right">
+                  Tags
+                </Label>
+                <Input
+                  id="edit-tags"
+                  value={selectedDocument.tags ? selectedDocument.tags.join(", ") : ""}
+                  onChange={(e) => {
+                    const tags = e.target.value
+                      .split(",")
+                      .map((tag) => tag.trim())
+                      .filter((tag) => tag)
+                    setSelectedDocument({
+                      ...selectedDocument,
+                      tags,
+                    })
+                  }}
+                  placeholder="Enter tags separated by commas"
+                  className="col-span-3"
+                />
+              </div>
+              <div className="grid grid-cols-4 items-start gap-4">
+                <Label htmlFor="edit-description" className="text-right pt-2">
+                  Description
+                </Label>
+                <Textarea
+                  id="edit-description"
+                  value={selectedDocument.description || ""}
+                  onChange={(e) => {
+                    setSelectedDocument({
+                      ...selectedDocument,
+                      description: e.target.value,
+                    })
+                  }}
+                  placeholder="Enter document description"
+                  className="col-span-3"
+                  rows={3}
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setDocumentDetailsOpen(false)
+                  setSelectedDocument(null)
+                }}
+              >
+                Cancel
+              </Button>
+              <Button type="button" onClick={() => handleDocumentUpdate(selectedDocument)}>
+                Save Changes
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
 
       {/* Delete Confirmation Modal */}
       <ConfirmationModal

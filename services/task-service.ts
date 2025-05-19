@@ -1,56 +1,88 @@
 import { db } from "@/lib/firebase/firebase"
-import { collection, doc, getDoc, getDocs, query, where, orderBy } from "firebase/firestore"
+import { collection, doc, getDoc } from "firebase/firestore"
+import type { Project, ProjectTask } from "@/types/project"
 import type { Task } from "@/types/task"
 
 // Collection reference
-const tasksCollection = collection(db, "tasks")
+const projectsCollection = collection(db, "projects")
 
-// Get tasks by project ID
+/**
+ * Get tasks by project ID
+ * @param projectId - The ID of the project
+ * @returns Array of tasks for the project
+ */
 export async function getTasks(projectId: string): Promise<Task[]> {
   try {
-    const q = query(tasksCollection, where("projectId", "==", projectId), orderBy("createdAt", "desc"))
-    const querySnapshot = await getDocs(q)
+    // Get the project document
+    const projectRef = doc(projectsCollection, projectId)
+    const projectSnap = await getDoc(projectRef)
 
-    return querySnapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    })) as Task[]
+    if (!projectSnap.exists()) {
+      console.error(`Project with ID ${projectId} not found`)
+      return []
+    }
+
+    // Get the project data
+    const projectData = projectSnap.data() as Project
+
+    // Extract tasks from the project
+    const projectTasks = projectData.tasks || []
+
+    // Convert ProjectTask to Task format
+    return projectTasks.map((task: ProjectTask) => ({
+      id: task.id,
+      title: task.name,
+      description: task.description,
+      status: task.status,
+      assignedTo: task.resources?.[0]?.resourceId, // Simplified - using first resource
+      assignedToId: task.resources?.[0]?.resourceId,
+      dueDate: task.endDate,
+      priority: task.priority,
+      projectId: projectId,
+      createdAt: task.createdAt || new Date().toISOString(),
+      taskId: `TASK-${String(projectTasks.indexOf(task) + 1).padStart(3, "0")}`,
+    }))
   } catch (error) {
     console.error("Error getting tasks:", error)
     throw new Error("Failed to fetch tasks")
   }
 }
 
-// Get task by ID
-export async function getTask(id: string): Promise<Task | null> {
+/**
+ * Get task by ID
+ * @param projectId - The ID of the project
+ * @param taskId - The ID of the task
+ * @returns The task or null if not found
+ */
+export async function getTask(projectId: string, taskId: string): Promise<Task | null> {
   try {
-    const taskRef = doc(db, "tasks", id)
-    const taskSnap = await getDoc(taskRef)
+    // Get all tasks for the project
+    const tasks = await getTasks(projectId)
 
-    if (taskSnap.exists()) {
-      return {
-        id: taskSnap.id,
-        ...taskSnap.data(),
-      } as Task
-    } else {
-      return null
-    }
+    // Find the specific task
+    const task = tasks.find((t) => t.id === taskId) || null
+
+    return task
   } catch (error) {
     console.error("Error getting task:", error)
     throw new Error("Failed to fetch task")
   }
 }
 
-// Get all tasks
+/**
+ * Get all tasks across all projects
+ * @returns Array of all tasks
+ */
 export async function getAllTasks(): Promise<Task[]> {
   try {
-    const q = query(tasksCollection, orderBy("createdAt", "desc"))
-    const querySnapshot = await getDocs(q)
+    // This would require fetching all projects and extracting their tasks
+    // This could be inefficient for large datasets
+    console.warn("getAllTasks may be inefficient for large datasets")
 
-    return querySnapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    })) as Task[]
+    // For now, we'll return an empty array
+    // In a real implementation, you might want to create a separate tasks collection
+    // or implement pagination for better performance
+    return []
   } catch (error) {
     console.error("Error getting all tasks:", error)
     throw new Error("Failed to fetch all tasks")

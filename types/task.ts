@@ -10,4 +10,5 @@ export interface Task {
   projectId?: string
   createdAt?: string | Date
   updatedAt?: string | Date
+  taskId?: string // Added taskId field for display purposes (e.g., "TASK-001")
 }

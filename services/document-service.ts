@@ -533,22 +533,21 @@ export async function getDocumentStatistics(projectId: string): Promise<Document
     })
 
     // Group by task
-    const taskCount: Record<string, { name: string; count: number }> = {}
+    const taskCount: Record<string, { count: number }> = {}
     documents.forEach((doc) => {
       if (doc.taskId) {
         if (!taskCount[doc.taskId]) {
-          taskCount[doc.taskId] = { name: "Task " + doc.taskId, count: 0 }
+          taskCount[doc.taskId] = { count: 0 }
         }
         taskCount[doc.taskId].count += 1
       }
     })
 
     // Calculate percentages and create task objects
-    const documentsByTask = Object.entries(taskCount).map(([taskId, { name, count }]) => {
+    const documentsByTask = Object.entries(taskCount).map(([taskId, { count }]) => {
       const percentage = (count / totalDocuments) * 100
       return {
         taskId,
-        taskName: name,
         count,
         percentage,
       }
