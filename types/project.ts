@@ -132,6 +132,9 @@ export interface ProjectTask {
   status: "Not Started" | "In Progress" | "Completed" | "Blocked" | "Postponed"
   priority: "Low" | "Medium" | "High"
   statusReason?: string
+  // Add new field for assigned team member
+  assignedTo?: string
+  assignedToName?: string
 }
 
 export interface TaskResourceAssignment {

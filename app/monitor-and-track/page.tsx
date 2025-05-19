@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { DailyActivityTracking } from "@/components/daily-activity-tracking"
 import { UpcomingDeliverables } from "@/components/upcoming-deliverables"
 import { BlockersAndDelays } from "@/components/blockers-and-delays"
@@ -15,6 +15,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useAuth } from "@/contexts/auth-context"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { WeeklyTabs } from "@/components/weekly-tabs"
+import { startOfWeek, endOfWeek } from "date-fns"
+import { WeeklyDatePicker } from "@/components/weekly-date-picker"
 
 export default function MonitorAndTrackPage() {
   const [projects, setProjects] = useState<any[]>([])
@@ -24,6 +26,8 @@ export default function MonitorAndTrackPage() {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date())
   const [activeTab, setActiveTab] = useState("daily")
   const { user } = useAuth()
+  const [weekStartDate, setWeekStartDate] = useState<Date>(startOfWeek(new Date(), { weekStartsOn: 1 }))
+  const [weekEndDate, setWeekEndDate] = useState<Date>(endOfWeek(new Date(), { weekStartsOn: 1 }))
 
   useEffect(() => {
     async function fetchProjects() {
@@ -55,13 +59,19 @@ export default function MonitorAndTrackPage() {
     }
   }, [user])
 
-  const handleDateChange = (date: Date) => {
+  // Use useCallback to memoize these handlers to prevent unnecessary re-renders
+  const handleDateChange = useCallback((date: Date) => {
     setSelectedDate(date)
-  }
+  }, [])
 
-  const handleProjectChange = (projectId: string) => {
+  const handleProjectChange = useCallback((projectId: string) => {
     setSelectedProjectId(projectId)
-  }
+  }, [])
+
+  const handleWeekChange = useCallback((start: Date, end: Date) => {
+    setWeekStartDate(start)
+    setWeekEndDate(end)
+  }, [])
 
   // Get the selected project name for display
   const selectedProject = userProjects.find((project) => project.id === selectedProjectId)
@@ -73,7 +83,11 @@ export default function MonitorAndTrackPage() {
         <h1 className="text-3xl font-bold">Monitor & Track</h1>
 
         <div className="w-full md:w-80">
-          <Select value={selectedProjectId} onValueChange={handleProjectChange}>
+          <Select
+            value={selectedProjectId}
+            onValueChange={handleProjectChange}
+            defaultValue={selectedProjectId || undefined}
+          >
             <SelectTrigger>
               <SelectValue placeholder="Select a project" />
             </SelectTrigger>
@@ -113,8 +127,12 @@ export default function MonitorAndTrackPage() {
           </TabsContent>
 
           <TabsContent value="weekly" className="space-y-8">
-            <TeamMeetingNotes projectId={selectedProjectId} />
-            <WeeklyTabs projectId={selectedProjectId} />
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-semibold">Weekly Overview</h2>
+              <WeeklyDatePicker initialDate={new Date()} onWeekChange={handleWeekChange} />
+            </div>
+            <TeamMeetingNotes projectId={selectedProjectId} startDate={weekStartDate} endDate={weekEndDate} />
+            <WeeklyTabs projectId={selectedProjectId} startDate={weekStartDate} endDate={weekEndDate} />
           </TabsContent>
         </Tabs>
       ) : (

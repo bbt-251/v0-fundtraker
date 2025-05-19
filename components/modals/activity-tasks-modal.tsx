@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, ArrowRight } from "lucide-react"
+import { Loader2, ArrowRight, User } from "lucide-react"
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover"
 import type { ProjectTask, ProjectActivity, HumanResource, MaterialResource } from "@/types/project"
 
@@ -89,6 +89,13 @@ export function ActivityTasksModal({
 
   const calculateTaskTotalCost = (task: ProjectTask) => {
     return task.resources.reduce((total, resource) => total + resource.totalCost, 0)
+  }
+
+  // Add getTeamMemberName function
+  const getTeamMemberName = (teamMemberId?: string) => {
+    if (!teamMemberId) return "Unassigned"
+    const member = humanResources.find((hr) => hr.id === teamMemberId)
+    return member ? member.name : "Unknown Member"
   }
 
   // Component for displaying resources with a popover
@@ -204,6 +211,7 @@ export function ActivityTasksModal({
                   <TableHead>Name</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Priority</TableHead>
+                  <TableHead>Assigned To</TableHead>
                   <TableHead>Start Date</TableHead>
                   <TableHead>End Date</TableHead>
                   <TableHead>Duration</TableHead>
@@ -225,6 +233,12 @@ export function ActivityTasksModal({
                     </TableCell>
                     <TableCell>
                       <Badge className={getPriorityBadgeColor(task.priority)}>{task.priority || "Medium"}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center">
+                        <User className="h-4 w-4 mr-2 text-gray-500" />
+                        <span>{task.assignedToName || getTeamMemberName(task.assignedTo)}</span>
+                      </div>
                     </TableCell>
                     <TableCell>
                       {task.multipleRanges ? (

@@ -106,7 +106,9 @@ export async function deleteTeamMember(id: string): Promise<void> {
   }
 }
 
-// Also update the getTeamMembersByProject function to avoid the same issue
+// Get team members assigned to a specific project
+// This function is maintained for backward compatibility, but it now filters team members
+// by their projectId field, not by assuming they're created per project
 export async function getTeamMembersByProject(projectId?: string): Promise<TeamMember[]> {
   try {
     let q

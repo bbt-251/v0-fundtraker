@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Filter, CheckCircle, Clock, AlertTriangle, XCircle, PauseCircle, Edit, Loader2 } from "lucide-react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -13,6 +13,7 @@ import { useToast } from "@/components/ui/use-toast"
 import type { ProjectTask } from "@/types/project"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { message } from "antd"
+import { getTeamMembers } from "@/services/team-member-service"
 
 // Define task status types
 type TaskStatus = "Not Started" | "In Progress" | "Completed" | "Blocked" | "Postponed"
@@ -45,16 +46,19 @@ const priorityOptions: { value: TaskPriority; label: string }[] = [
 interface DailyActivityTrackingProps {
   initialDate?: Date
   onDateChange?: (date: Date) => void
+  projectId?: string
 }
 
-export function DailyActivityTracking({ initialDate, onDateChange }: DailyActivityTrackingProps) {
+export function DailyActivityTracking({ initialDate, onDateChange, projectId }: DailyActivityTrackingProps) {
   const { toast } = useToast()
   const [date, setDate] = useState<Date>(initialDate || new Date())
   const [assigneeFilter, setAssigneeFilter] = useState<string | null>(null)
   const [priorityFilter, setPriorityFilter] = useState<TaskPriority | null>(null)
   const [statusFilter, setStatusFilter] = useState<TaskStatus | null>(null)
   const [tasks, setTasks] = useState<ExtendedTask[]>([])
-  const [assignees, setAssignees] = useState<{ value: string; label: string }[]>([])
+  const [assignees, setAssignees] = useState<
+    { value: string; label: string; id?: string; type?: "teamMember" | "existing" }[]
+  >([])
   const [loading, setLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false) // Add loading state for save button
 
@@ -67,6 +71,13 @@ export function DailyActivityTracking({ initialDate, onDateChange }: DailyActivi
 
   // Create message API
   const [messageApi, contextHolder] = message.useMessage()
+
+  // Update local date state when initialDate prop changes
+  useEffect(() => {
+    if (initialDate && initialDate.getTime() !== date.getTime()) {
+      setDate(initialDate)
+    }
+  }, [initialDate, date])
 
   // Fetch tasks from projects owned by the logged-in user
   useEffect(() => {
@@ -92,6 +103,9 @@ export function DailyActivityTracking({ initialDate, onDateChange }: DailyActivi
 
         // Process each project
         for (const projectDoc of querySnapshot.docs) {
+          // Skip if projectId is provided and doesn't match
+          if (projectId && projectDoc.id !== projectId) continue
+
           const projectData = projectDoc.data()
           const projectTasks = projectData.tasks || []
           const projectName = projectData.name || "Unnamed Project"
@@ -117,9 +131,22 @@ export function DailyActivityTracking({ initialDate, onDateChange }: DailyActivi
           })
         }
 
+        // After the loop, update the assignees state:
+        setAssignees((prev) => {
+          const existingOptions = Array.from(uniqueAssignees).map((name) => ({
+            value: name,
+            label: name,
+            type: "existing" as const,
+          }))
+
+          // Keep team members and add new existing assignees
+          const teamMembers = prev.filter((a) => a.type === "teamMember")
+
+          return [...teamMembers, ...existingOptions]
+        })
+
         // Update state with fetched tasks and assignees
         setTasks(fetchedTasks)
-        setAssignees(Array.from(uniqueAssignees).map((name) => ({ value: name, label: name })))
       } catch (error) {
         console.error("Error fetching tasks:", error)
         toast({
@@ -133,20 +160,66 @@ export function DailyActivityTracking({ initialDate, onDateChange }: DailyActivi
     }
 
     fetchTasks()
-  }, [date, toast])
+  }, [date, toast, projectId])
 
-  // Function to open the edit modal
-  const openEditModal = (task: ExtendedTask) => {
+  // Fetch team members for the current user (project owner)
+  useEffect(() => {
+    const fetchTeamMembers = async () => {
+      try {
+        // Get current user ID (project owner)
+        const userId = auth.currentUser?.uid
+        if (!userId) {
+          console.error("No user logged in")
+          return
+        }
+
+        // Fetch team members by owner ID, not by project ID
+        const members = await getTeamMembers(userId)
+
+        // Create assignee options from team members
+        const teamMemberOptions = members.map((member) => ({
+          value: member.id,
+          label: `${member.firstName} ${member.lastName} (${member.role})`,
+          id: member.id,
+          type: "teamMember" as const,
+        }))
+
+        // Merge with existing assignees, avoiding duplicates
+        setAssignees((prevAssignees) => {
+          const existingAssignees = prevAssignees.filter((a) => a.type === "existing")
+
+          // Create a combined array without duplicates
+          const combined = [...existingAssignees]
+
+          // Add team members that aren't already in the list
+          teamMemberOptions.forEach((option) => {
+            if (!combined.some((a) => a.id === option.id)) {
+              combined.push(option)
+            }
+          })
+
+          return combined
+        })
+      } catch (error) {
+        console.error("Error fetching team members:", error)
+      }
+    }
+
+    fetchTeamMembers()
+  }, []) // Only fetch once when component mounts
+
+  // Function to open the edit modal - use useCallback to memoize
+  const openEditModal = useCallback((task: ExtendedTask) => {
     setCurrentTask(task)
     // Set default values or use existing values, never undefined
     setEditStatus((task.status as TaskStatus) || "Not Started")
     setEditPriority((task.priority as TaskPriority) || "Medium")
     setEditAssignee(task.assignee || "")
     setEditModalOpen(true)
-  }
+  }, [])
 
-  // Function to save the edited task
-  const saveTaskEdits = async () => {
+  // Function to save the edited task - use useCallback to memoize
+  const saveTaskEdits = useCallback(async () => {
     if (!currentTask) {
       console.error("No task selected for editing")
       messageApi.error("Error: No task selected for editing")
@@ -171,24 +244,41 @@ export function DailyActivityTracking({ initialDate, onDateChange }: DailyActivi
       const projectData = projectSnap.data()
       const projectTasks = projectData.tasks || []
 
-      // Ensure we have valid values for all fields (use defaults if needed)
-      const updatedStatus = editStatus || "Not Started"
-      const updatedPriority = editPriority || "Medium"
-      // For assignee, we'll keep it as is if it's empty
+      // Find the selected assignee option
+      const selectedAssignee = assignees.find((a) => a.value === editAssignee)
 
-      // Find and update the task
+      // Determine the assignee name and ID based on the type
+      let assigneeName = ""
+      let assigneeId = ""
+
+      if (selectedAssignee) {
+        if (selectedAssignee.type === "teamMember") {
+          assigneeName = selectedAssignee.label
+          assigneeId = selectedAssignee.id || ""
+        } else {
+          assigneeName = selectedAssignee.label
+          assigneeId = selectedAssignee.value
+        }
+      }
+
+      // Update the task with the correct assignee information
       const updatedTasks = projectTasks.map((task: ProjectTask) => {
         if (task.id === currentTask.id) {
           // Create a clean update object with only the fields we want to update
           const updatedTask = { ...task }
 
           // Only set fields that have valid values
-          updatedTask.status = updatedStatus
-          updatedTask.priority = updatedPriority
+          updatedTask.status = editStatus
+          updatedTask.priority = editPriority
 
           // Only update assignee if it's not empty
-          if (editAssignee) {
-            updatedTask.assignee = editAssignee
+          if (editAssignee && editAssignee !== "unassigned") {
+            updatedTask.assignee = assigneeId
+            updatedTask.assignedToName = assigneeName
+          } else {
+            // If "Unassigned" is selected, clear the assignee
+            updatedTask.assignee = undefined
+            updatedTask.assignedToName = undefined
           }
 
           return updatedTask
@@ -206,12 +296,25 @@ export function DailyActivityTracking({ initialDate, onDateChange }: DailyActivi
       setTasks(
         tasks.map((task) => {
           if (task.id === currentTask.id) {
-            return {
+            const updatedTask = {
               ...task,
-              status: updatedStatus,
-              priority: updatedPriority,
-              assignee: editAssignee || task.assignee,
+              status: editStatus,
+              priority: editPriority,
             }
+
+            if (editAssignee && editAssignee !== "unassigned") {
+              const selectedAssignee = assignees.find((a) => a.value === editAssignee)
+              if (selectedAssignee) {
+                updatedTask.assignee =
+                  selectedAssignee.type === "teamMember" ? selectedAssignee.id : selectedAssignee.value
+                updatedTask.assignedToName = selectedAssignee.label
+              }
+            } else {
+              updatedTask.assignee = undefined
+              updatedTask.assignedToName = undefined
+            }
+
+            return updatedTask
           }
           return task
         }),
@@ -237,7 +340,7 @@ export function DailyActivityTracking({ initialDate, onDateChange }: DailyActivi
       // Reset loading state
       setIsSaving(false)
     }
-  }
+  }, [currentTask, editStatus, editPriority, editAssignee, messageApi, tasks, assignees])
 
   // Check if a task is scheduled for the selected date
   const isTaskOnDate = (task: ProjectTask, selectedDate: Date): boolean => {
@@ -286,134 +389,53 @@ export function DailyActivityTracking({ initialDate, onDateChange }: DailyActivi
     notStarted: tasksForSelectedDate.filter((task) => task.status === "Not Started").length,
   }
 
-  // Update task status in the project document
-  const updateTaskStatus = async (taskId: string, projectId: string, newStatus: TaskStatus) => {
-    try {
-      // Get the project document
-      const projectRef = doc(db, "projects", projectId)
-      const projectSnap = await getDoc(projectRef)
+  // Update task status in the project document - use useCallback to memoize
+  const updateTaskStatus = useCallback(
+    async (taskId: string, projectId: string, newStatus: TaskStatus) => {
+      try {
+        // Get the project document
+        const projectRef = doc(db, "projects", projectId)
+        const projectSnap = await getDoc(projectRef)
 
-      if (!projectSnap.exists()) {
-        throw new Error("Project not found")
+        if (!projectSnap.exists()) {
+          throw new Error("Project not found")
+        }
+
+        const projectData = projectSnap.data()
+        const projectTasks = projectData.tasks || []
+
+        // Find and update the task
+        const updatedTasks = projectTasks.map((task: ProjectTask) =>
+          task.id === taskId ? { ...task, status: newStatus } : task,
+        )
+
+        // Update the project document
+        await updateDoc(projectRef, {
+          tasks: updatedTasks,
+          updatedAt: new Date().toISOString(),
+        })
+
+        // Update local state
+        setTasks(tasks.map((task) => (task.id === taskId ? { ...task, status: newStatus } : task)))
+
+        toast({
+          title: "Status updated",
+          description: `Task status changed to ${newStatus}`,
+        })
+      } catch (error) {
+        console.error("Error updating task status:", error)
+        toast({
+          title: "Error",
+          description: "Failed to update task status. Please try again.",
+          variant: "destructive",
+        })
       }
-
-      const projectData = projectSnap.data()
-      const projectTasks = projectData.tasks || []
-
-      // Find and update the task
-      const updatedTasks = projectTasks.map((task: ProjectTask) =>
-        task.id === taskId ? { ...task, status: newStatus } : task,
-      )
-
-      // Update the project document
-      await updateDoc(projectRef, {
-        tasks: updatedTasks,
-        updatedAt: new Date().toISOString(),
-      })
-
-      // Update local state
-      setTasks(tasks.map((task) => (task.id === taskId ? { ...task, status: newStatus } : task)))
-
-      toast({
-        title: "Status updated",
-        description: `Task status changed to ${newStatus}`,
-      })
-    } catch (error) {
-      console.error("Error updating task status:", error)
-      toast({
-        title: "Error",
-        description: "Failed to update task status. Please try again.",
-        variant: "destructive",
-      })
-    }
-  }
-
-  // Update task assignee in the project document
-  const updateTaskAssignee = async (taskId: string, projectId: string, newAssignee: string) => {
-    try {
-      // Get the project document
-      const projectRef = doc(db, "projects", projectId)
-      const projectSnap = await getDoc(projectRef)
-
-      if (!projectSnap.exists()) {
-        throw new Error("Project not found")
-      }
-
-      const projectData = projectSnap.data()
-      const projectTasks = projectData.tasks || []
-
-      // Find and update the task
-      const updatedTasks = projectTasks.map((task: ProjectTask) =>
-        task.id === taskId ? { ...task, assignee: newAssignee } : task,
-      )
-
-      // Update the project document
-      await updateDoc(projectRef, {
-        tasks: updatedTasks,
-        updatedAt: new Date().toISOString(),
-      })
-
-      // Update local state
-      setTasks(tasks.map((task) => (task.id === taskId ? { ...task, assignee: newAssignee } : task)))
-
-      toast({
-        title: "Assignee updated",
-        description: `Task assigned to ${newAssignee}`,
-      })
-    } catch (error) {
-      console.error("Error updating task assignee:", error)
-      toast({
-        title: "Error",
-        description: "Failed to update task assignee. Please try again.",
-        variant: "destructive",
-      })
-    }
-  }
-
-  // Update task priority in the project document
-  const updateTaskPriority = async (taskId: string, projectId: string, newPriority: TaskPriority) => {
-    try {
-      // Get the project document
-      const projectRef = doc(db, "projects", projectId)
-      const projectSnap = await getDoc(projectRef)
-
-      if (!projectSnap.exists()) {
-        throw new Error("Project not found")
-      }
-
-      const projectData = projectSnap.data()
-      const projectTasks = projectData.tasks || []
-
-      // Find and update the task
-      const updatedTasks = projectTasks.map((task: ProjectTask) =>
-        task.id === taskId ? { ...task, priority: newPriority } : task,
-      )
-
-      // Update the project document
-      await updateDoc(projectRef, {
-        tasks: updatedTasks,
-        updatedAt: new Date().toISOString(),
-      })
-
-      // Update local state
-      setTasks(tasks.map((task) => (task.id === taskId ? { ...task, priority: newPriority } : task)))
-
-      toast({
-        title: "Priority updated",
-        description: `Task priority changed to ${newPriority}`,
-      })
-    } catch (error) {
-      console.error("Error updating task priority:", error)
-      toast({
-        title: "Error",
-        description: "Failed to update task priority. Please try again.",
-        variant: "destructive",
-      })
-    }
-  }
+    },
+    [tasks, toast],
+  )
 
   // Get status badge color
-  const getStatusColor = (status: TaskStatus) => {
+  const getStatusColor = useCallback((status: TaskStatus) => {
     switch (status) {
       case "Completed":
         return "bg-green-100 text-green-800 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-300"
@@ -428,24 +450,10 @@ export function DailyActivityTracking({ initialDate, onDateChange }: DailyActivi
       default:
         return "bg-gray-100 text-gray-800 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300"
     }
-  }
-
-  // Get priority badge color
-  const getPriorityColor = (priority: TaskPriority) => {
-    switch (priority) {
-      case "High":
-        return "bg-red-100 text-red-800 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-300"
-      case "Medium":
-        return "bg-amber-100 text-amber-800 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-300"
-      case "Low":
-        return "bg-green-100 text-green-800 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-300"
-      default:
-        return "bg-gray-100 text-gray-800 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300"
-    }
-  }
+  }, [])
 
   // Get status icon
-  const getStatusIcon = (status: TaskStatus) => {
+  const getStatusIcon = useCallback((status: TaskStatus) => {
     switch (status) {
       case "Completed":
         return <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400" />
@@ -460,18 +468,42 @@ export function DailyActivityTracking({ initialDate, onDateChange }: DailyActivi
       default:
         return null
     }
-  }
+  }, [])
 
-  // Handle date change
-  const handleDateChange = (newDate: Date | null) => {
-    if (newDate) {
-      setDate(newDate)
-      // Call the parent component's onDateChange if provided
-      if (onDateChange) {
-        onDateChange(newDate)
+  // Handle date change - use useCallback to memoize
+  const handleDateChange = useCallback(
+    (newDate: Date | null) => {
+      if (newDate) {
+        // Set local state
+        setDate(newDate)
+
+        // Call the parent component's onDateChange if provided
+        if (onDateChange) {
+          onDateChange(newDate)
+        }
       }
-    }
-  }
+    },
+    [onDateChange],
+  )
+
+  // Handle filter changes - use useCallback to memoize
+  const handleAssigneeFilterChange = useCallback((value: string) => {
+    setAssigneeFilter(value === "all" ? null : value)
+  }, [])
+
+  const handlePriorityFilterChange = useCallback((value: string) => {
+    setPriorityFilter(value === "all" ? null : (value as TaskPriority))
+  }, [])
+
+  const handleStatusFilterChange = useCallback((value: TaskStatus | null) => {
+    setStatusFilter(value)
+  }, [])
+
+  const clearFilters = useCallback(() => {
+    setAssigneeFilter(null)
+    setPriorityFilter(null)
+    setStatusFilter(null)
+  }, [])
 
   return (
     <div className="space-y-6">
@@ -496,7 +528,7 @@ export function DailyActivityTracking({ initialDate, onDateChange }: DailyActivi
       {/* Filters */}
       <div className="flex flex-wrap gap-2">
         {/* Assignee Filter */}
-        <Select value={assigneeFilter || ""} onValueChange={(value) => setAssigneeFilter(value || null)}>
+        <Select value={assigneeFilter || "all"} onValueChange={handleAssigneeFilterChange} defaultValue="all">
           <SelectTrigger className="w-[200px] gap-2">
             <Filter className="h-4 w-4" />
             <SelectValue placeholder="Filter by Assignee" />
@@ -512,10 +544,7 @@ export function DailyActivityTracking({ initialDate, onDateChange }: DailyActivi
         </Select>
 
         {/* Priority Filter */}
-        <Select
-          value={priorityFilter || ""}
-          onValueChange={(value) => setPriorityFilter((value as TaskPriority) || null)}
-        >
+        <Select value={priorityFilter || "all"} onValueChange={handlePriorityFilterChange} defaultValue="all">
           <SelectTrigger className="w-[200px] gap-2">
             <Filter className="h-4 w-4" />
             <SelectValue placeholder="Filter by Priority" />
@@ -532,15 +561,7 @@ export function DailyActivityTracking({ initialDate, onDateChange }: DailyActivi
 
         {/* Clear Filters Button */}
         {(assigneeFilter || priorityFilter || statusFilter) && (
-          <Button
-            variant="outline"
-            onClick={() => {
-              setAssigneeFilter(null)
-              setPriorityFilter(null)
-              setStatusFilter(null)
-            }}
-            className="text-sm"
-          >
+          <Button variant="outline" onClick={clearFilters} className="text-sm">
             Clear Filters
           </Button>
         )}
@@ -551,7 +572,7 @@ export function DailyActivityTracking({ initialDate, onDateChange }: DailyActivi
         {/* Total Tasks Card */}
         <Card
           className={`p-4 cursor-pointer ${statusFilter === null ? "ring-2 ring-primary" : ""}`}
-          onClick={() => setStatusFilter(null)}
+          onClick={() => handleStatusFilterChange(null)}
         >
           <div className="text-sm font-medium text-muted-foreground">Total Tasks</div>
           <div className="text-3xl font-bold mt-1">{taskCounts.total}</div>
@@ -560,7 +581,7 @@ export function DailyActivityTracking({ initialDate, onDateChange }: DailyActivi
         {/* Completed Tasks Card */}
         <Card
           className={`p-4 cursor-pointer ${statusFilter === "Completed" ? "ring-2 ring-primary" : ""}`}
-          onClick={() => setStatusFilter(statusFilter === "Completed" ? null : "Completed")}
+          onClick={() => handleStatusFilterChange(statusFilter === "Completed" ? null : "Completed")}
         >
           <div className="text-sm font-medium text-green-600 dark:text-green-400">Completed</div>
           <div className="text-3xl font-bold mt-1 text-green-600 dark:text-green-400">{taskCounts.completed}</div>
@@ -569,7 +590,7 @@ export function DailyActivityTracking({ initialDate, onDateChange }: DailyActivi
         {/* In Progress Tasks Card */}
         <Card
           className={`p-4 cursor-pointer ${statusFilter === "In Progress" ? "ring-2 ring-primary" : ""}`}
-          onClick={() => setStatusFilter(statusFilter === "In Progress" ? null : "In Progress")}
+          onClick={() => handleStatusFilterChange(statusFilter === "In Progress" ? null : "In Progress")}
         >
           <div className="text-sm font-medium text-blue-600 dark:text-blue-400">In Progress</div>
           <div className="text-3xl font-bold mt-1 text-blue-600 dark:text-blue-400">{taskCounts.inProgress}</div>
@@ -578,7 +599,7 @@ export function DailyActivityTracking({ initialDate, onDateChange }: DailyActivi
         {/* Blocked Tasks Card */}
         <Card
           className={`p-4 cursor-pointer ${statusFilter === "Blocked" ? "ring-2 ring-primary" : ""}`}
-          onClick={() => setStatusFilter(statusFilter === "Blocked" ? null : "Blocked")}
+          onClick={() => handleStatusFilterChange(statusFilter === "Blocked" ? null : "Blocked")}
         >
           <div className="text-sm font-medium text-red-600 dark:text-red-400">Blocked</div>
           <div className="text-3xl font-bold mt-1 text-red-600 dark:text-red-400">{taskCounts.blocked}</div>
@@ -587,7 +608,7 @@ export function DailyActivityTracking({ initialDate, onDateChange }: DailyActivi
         {/* Postponed Tasks Card */}
         <Card
           className={`p-4 cursor-pointer ${statusFilter === "Postponed" ? "ring-2 ring-primary" : ""}`}
-          onClick={() => setStatusFilter(statusFilter === "Postponed" ? null : "Postponed")}
+          onClick={() => handleStatusFilterChange(statusFilter === "Postponed" ? null : "Postponed")}
         >
           <div className="text-sm font-medium text-amber-600 dark:text-amber-400">Postponed</div>
           <div className="text-3xl font-bold mt-1 text-amber-600 dark:text-amber-400">{taskCounts.postponed}</div>
@@ -596,7 +617,7 @@ export function DailyActivityTracking({ initialDate, onDateChange }: DailyActivi
         {/* Not Started Tasks Card */}
         <Card
           className={`p-4 cursor-pointer ${statusFilter === "Not Started" ? "ring-2 ring-primary" : ""}`}
-          onClick={() => setStatusFilter(statusFilter === "Not Started" ? null : "Not Started")}
+          onClick={() => handleStatusFilterChange(statusFilter === "Not Started" ? null : "Not Started")}
         >
           <div className="text-sm font-medium text-gray-600 dark:text-gray-400">Not Started</div>
           <div className="text-3xl font-bold mt-1 text-gray-600 dark:text-gray-400">{taskCounts.notStarted}</div>
@@ -635,7 +656,7 @@ export function DailyActivityTracking({ initialDate, onDateChange }: DailyActivi
 
                   {/* Assignee Chip */}
                   <div className="rounded-full bg-gray-800 px-3 py-1 text-sm font-medium text-white flex items-center h-8">
-                    Assignee: {task.assignee || "Unassigned"}
+                    Assignee: {task.assignedToName || task.assignee || "Unassigned"}
                   </div>
 
                   {/* Priority Chip */}
@@ -688,10 +709,10 @@ export function DailyActivityTracking({ initialDate, onDateChange }: DailyActivi
                 <Select
                   value={editStatus}
                   onValueChange={(value) => setEditStatus(value as TaskStatus)}
-                  className="col-span-3"
+                  defaultValue={editStatus}
                   disabled={isSaving}
                 >
-                  <SelectTrigger id="task-status" className="bg-gray-800 border-gray-700 text-white">
+                  <SelectTrigger id="task-status" className="col-span-3 bg-gray-800 border-gray-700 text-white">
                     <SelectValue placeholder="Select status" />
                   </SelectTrigger>
                   <SelectContent className="bg-gray-800 border-gray-700 text-white">
@@ -708,8 +729,13 @@ export function DailyActivityTracking({ initialDate, onDateChange }: DailyActivi
                 <label htmlFor="task-assignee" className="text-gray-300 text-right">
                   Assignee
                 </label>
-                <Select value={editAssignee} onValueChange={setEditAssignee} className="col-span-3" disabled={isSaving}>
-                  <SelectTrigger id="task-assignee" className="bg-gray-800 border-gray-700 text-white">
+                <Select
+                  value={editAssignee || "unassigned"}
+                  onValueChange={setEditAssignee}
+                  defaultValue={editAssignee || "unassigned"}
+                  disabled={isSaving}
+                >
+                  <SelectTrigger id="task-assignee" className="col-span-3 bg-gray-800 border-gray-700 text-white">
                     <SelectValue placeholder="Select assignee" />
                   </SelectTrigger>
                   <SelectContent className="bg-gray-800 border-gray-700 text-white">
@@ -732,10 +758,10 @@ export function DailyActivityTracking({ initialDate, onDateChange }: DailyActivi
                 <Select
                   value={editPriority}
                   onValueChange={(value) => setEditPriority(value as TaskPriority)}
-                  className="col-span-3"
+                  defaultValue={editPriority}
                   disabled={isSaving}
                 >
-                  <SelectTrigger id="task-priority" className="bg-gray-800 border-gray-700 text-white">
+                  <SelectTrigger id="task-priority" className="col-span-3 bg-gray-800 border-gray-700 text-white">
                     <SelectValue placeholder="Select priority" />
                   </SelectTrigger>
                   <SelectContent className="bg-gray-800 border-gray-700 text-white">

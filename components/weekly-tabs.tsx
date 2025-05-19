@@ -9,9 +9,11 @@ import { ClipboardList, AlertTriangle, BarChart, CheckSquare } from "lucide-reac
 
 interface WeeklyTabsProps {
   projectId: string
+  startDate?: Date
+  endDate?: Date
 }
 
-export function WeeklyTabs({ projectId }: WeeklyTabsProps) {
+export function WeeklyTabs({ projectId, startDate, endDate }: WeeklyTabsProps) {
   return (
     <Tabs defaultValue="change-requests" className="w-full">
       <TabsList className="grid w-full grid-cols-4">
@@ -38,19 +40,19 @@ export function WeeklyTabs({ projectId }: WeeklyTabsProps) {
       </TabsList>
 
       <TabsContent value="change-requests" className="mt-6">
-        <ChangeRequests projectId={projectId} />
+        <ChangeRequests projectId={projectId} startDate={startDate} endDate={endDate} />
       </TabsContent>
 
       <TabsContent value="blockers-log" className="mt-6">
-        <BlockersAndDelays projectId={projectId} />
+        <BlockersAndDelays projectId={projectId} startDate={startDate} endDate={endDate} />
       </TabsContent>
 
       <TabsContent value="resource-utilization" className="mt-6">
-        <ResourceUtilization projectId={projectId} />
+        <ResourceUtilization projectId={projectId} startDate={startDate} endDate={endDate} />
       </TabsContent>
 
       <TabsContent value="week-outcomes" className="mt-6">
-        <WeekOutcomes projectId={projectId} />
+        <WeekOutcomes projectId={projectId} startDate={startDate} endDate={endDate} />
       </TabsContent>
     </Tabs>
   )

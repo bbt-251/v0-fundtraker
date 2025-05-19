@@ -1,3 +1,12 @@
+export interface TaskAttachment {
+  id: string
+  fileName: string
+  fileType: string
+  fileSize: number
+  fileUrl: string
+  uploadedAt: string
+}
+
 export interface Task {
   id: string
   title: string
@@ -11,4 +20,5 @@ export interface Task {
   createdAt?: string | Date
   updatedAt?: string | Date
   taskId?: string // Added taskId field for display purposes (e.g., "TASK-001")
+  attachments?: TaskAttachment[]
 }

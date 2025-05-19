@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Edit, Trash2, Plus, Loader2, ArrowRight, MoreHorizontal, Clock, CheckCircle, Play, Ban } from "lucide-react"
+import { Plus, Loader2, ArrowRight, MoreHorizontal } from "lucide-react"
 import {
   addProjectTask,
   updateProjectTask,
@@ -12,37 +12,33 @@ import {
   addTaskResourceAssignment,
   deleteTaskResourceAssignment,
 } from "@/services/project-service"
+import { getTeamMembersByProject } from "@/services/team-member-service"
 import type { ProjectActivity, ProjectTask, HumanResource, MaterialResource } from "@/types/project"
+import type { TeamMember } from "@/types/team-member"
 import { format } from "date-fns"
 import { DateRangePicker, type MultiDateRange, type DateRange } from "@/components/ui/date-picker"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-  DialogDescription,
-} from "@/components/ui/dialog"
-import { Badge } from "@/components/ui/badge"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { Textarea } from "@/components/ui/textarea"
 
 interface TasksTabProps {
   projectId: string
+  userId: string // You'll need to pass the userId prop to TasksTab
 }
 
-export function TasksTab({ projectId }: TasksTabProps) {
+export function TasksTab({ projectId, userId }: TasksTabProps) {
   const [activities, setActivities] = useState<ProjectActivity[]>([])
   const [tasks, setTasks] = useState<ProjectTask[]>([])
   const [humanResources, setHumanResources] = useState<HumanResource[]>([])
   const [materialResources, setMaterialResources] = useState<MaterialResource[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
+  const [selectedTeamMemberId, setSelectedTeamMemberId] = useState("")
+  const [taskDetailModalOpen, setTaskDetailModalOpen] = useState(false)
+  const [selectedTaskForDetail, setSelectedTaskForDetail] = useState<ProjectTask | null>(null)
 
-  // Task form state
   const [taskName, setTaskName] = useState("")
   const [taskDescription, setTaskDescription] = useState("")
   const [selectedActivityId, setSelectedActivityId] = useState("")
@@ -55,7 +51,6 @@ export function TasksTab({ projectId }: TasksTabProps) {
   const [currentTaskId, setCurrentTaskId] = useState<string | null>(null)
   const [taskPriority, setTaskPriority] = useState<"Low" | "Medium" | "High">("Medium")
 
-  // Resource assignment form state
   const [selectedTaskId, setSelectedTaskId] = useState("")
   const [selectedResourceType, setSelectedResourceType] = useState<"human" | "material">("human")
   const [selectedResourceId, setSelectedResourceId] = useState("")
@@ -66,15 +61,14 @@ export function TasksTab({ projectId }: TasksTabProps) {
     ranges: [{ from: undefined, to: undefined }],
   })
 
-  // Status change modal state
   const [statusModalOpen, setStatusModalOpen] = useState(false)
   const [statusChangeType, setStatusChangeType] = useState<"block" | "postpone" | null>(null)
   const [statusReason, setStatusReason] = useState("")
   const [taskToChangeStatus, setTaskToChangeStatus] = useState<string | null>(null)
 
-  // Fetch project data when component mounts
   useEffect(() => {
     fetchProjectData()
+    fetchTeamMembers()
   }, [projectId])
 
   const fetchProjectData = async () => {
@@ -92,25 +86,28 @@ export function TasksTab({ projectId }: TasksTabProps) {
     }
   }
 
-  // Calculate duration in days between two dates
+  const fetchTeamMembers = async () => {
+    try {
+      const members = await getTeamMembersByProject(projectId)
+      setTeamMembers(members)
+    } catch (error: any) {
+      console.error("Error fetching team members:", error)
+    }
+  }
+
   const calculateDuration = (start: string, end: string) => {
     const startDate = new Date(start)
     const endDate = new Date(end)
 
-    // Reset hours to ensure we're only counting days
     startDate.setHours(0, 0, 0, 0)
     endDate.setHours(0, 0, 0, 0)
 
-    // Calculate the difference in milliseconds
     const diffTime = Math.abs(endDate.getTime() - startDate.getTime())
-
-    // Convert to days and add 1 to include both start and end dates
     const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1
 
     return diffDays
   }
 
-  // Calculate resource cost
   const calculateResourceCost = (
     resourceType: "human" | "material",
     resourceId: string,
@@ -147,6 +144,12 @@ export function TasksTab({ projectId }: TasksTabProps) {
     }
   }
 
+  const getTeamMemberName = (teamMemberId?: string) => {
+    if (!teamMemberId) return "Unassigned"
+    const member = teamMembers.find((m) => m.id === teamMemberId)
+    return member ? member.name : "Unknown Member"
+  }
+
   const handleAddTask = async () => {
     if (!taskName.trim()) {
       setError("Task name is required")
@@ -158,7 +161,6 @@ export function TasksTab({ projectId }: TasksTabProps) {
       return
     }
 
-    // Validate date ranges
     if (useMultipleTaskDates) {
       if (
         !taskMultiDateRange ||
@@ -185,7 +187,6 @@ export function TasksTab({ projectId }: TasksTabProps) {
       let dateRanges: { startDate: string; endDate: string }[] | undefined
 
       if (useMultipleTaskDates && taskMultiDateRange) {
-        // Process multiple date ranges
         dateRanges = taskMultiDateRange.ranges
           .filter((range) => range.from && range.to)
           .map((range) => ({
@@ -193,7 +194,6 @@ export function TasksTab({ projectId }: TasksTabProps) {
             endDate: format(range.to!, "yyyy-MM-dd"),
           }))
 
-        // Set overall start/end dates
         const allDates = dateRanges.flatMap((range) => [new Date(range.startDate), new Date(range.endDate)])
         const minDate = new Date(Math.min(...allDates.map((date) => date.getTime())))
         const maxDate = new Date(Math.max(...allDates.map((date) => date.getTime())))
@@ -201,20 +201,23 @@ export function TasksTab({ projectId }: TasksTabProps) {
         startDate = format(minDate, "yyyy-MM-dd")
         endDate = format(maxDate, "yyyy-MM-dd")
 
-        // Calculate total duration (excluding weekends if necessary)
         duration = dateRanges.reduce((total, range) => {
           return total + calculateDuration(range.startDate, range.endDate)
         }, 0)
       } else {
-        // Single date range
         startDate = format(taskDateRange!.from!, "yyyy-MM-dd")
         endDate = format(taskDateRange!.to!, "yyyy-MM-dd")
         duration = calculateDuration(startDate, endDate)
         dateRanges = undefined
       }
 
+      let assignedToName
+      if (selectedTeamMemberId) {
+        const teamMember = teamMembers.find((m) => m.id === selectedTeamMemberId)
+        assignedToName = teamMember?.name
+      }
+
       if (isEditing && currentTaskId) {
-        // Update existing task
         const updatedTask = await updateProjectTask(projectId, currentTaskId, {
           name: taskName,
           description: taskDescription,
@@ -224,15 +227,14 @@ export function TasksTab({ projectId }: TasksTabProps) {
           duration,
           dateRanges,
           multipleRanges: useMultipleTaskDates,
-          priority: taskPriority || "Medium", // Ensure priority is never undefined
-          // Only include status if it's being explicitly changed
+          priority: taskPriority || "Medium",
           status: "Not Started",
+          assignedTo: selectedTeamMemberId || undefined,
+          assignedToName: assignedToName,
         })
 
-        // Update local state
         setTasks(tasks.map((task) => (task.id === currentTaskId ? updatedTask : task)))
       } else {
-        // Add new task
         const newTask = await addProjectTask(projectId, {
           name: taskName,
           description: taskDescription,
@@ -242,15 +244,15 @@ export function TasksTab({ projectId }: TasksTabProps) {
           duration,
           dateRanges,
           multipleRanges: useMultipleTaskDates,
-          status: "Not Started", // Default status
-          priority: taskPriority || "Medium", // Default priority
+          status: "Not Started",
+          priority: taskPriority || "Medium",
+          assignedTo: selectedTeamMemberId || undefined,
+          assignedToName: assignedToName,
         })
 
-        // Update local state
         setTasks([...tasks, newTask])
       }
 
-      // Reset form
       setTaskName("")
       setTaskDescription("")
       setSelectedActivityId("")
@@ -260,6 +262,7 @@ export function TasksTab({ projectId }: TasksTabProps) {
       setIsEditing(false)
       setCurrentTaskId(null)
       setTaskPriority("Medium")
+      setSelectedTeamMemberId("")
     } catch (error: any) {
       setError(error.message || "Failed to save task")
     } finally {
@@ -272,6 +275,7 @@ export function TasksTab({ projectId }: TasksTabProps) {
     setTaskDescription(task.description)
     setSelectedActivityId(task.activityId)
     setTaskPriority(task.priority || "Medium")
+    setSelectedTeamMemberId(task.assignedTo || "")
 
     if (task.multipleRanges && task.dateRanges && task.dateRanges.length > 0) {
       setUseMultipleTaskDates(true)
@@ -318,7 +322,6 @@ export function TasksTab({ projectId }: TasksTabProps) {
       return
     }
 
-    // Validate date ranges
     if (useMultipleResourceDates) {
       if (
         !resourceMultiDateRange ||
@@ -335,20 +338,17 @@ export function TasksTab({ projectId }: TasksTabProps) {
       }
     }
 
-    // Validate that resource dates are within task dates
     const selectedTask = tasks.find((t) => t.id === selectedTaskId)
     if (selectedTask) {
       const taskStart = new Date(selectedTask.startDate)
       const taskEnd = new Date(selectedTask.endDate)
 
-      // Reset hours to ensure proper comparison
       taskStart.setHours(0, 0, 0, 0)
       taskEnd.setHours(0, 0, 0, 0)
 
       if (useMultipleResourceDates) {
-        // Check all resource date ranges are within task dates
         const allRangesValid = resourceMultiDateRange.ranges.every((range) => {
-          if (!range.from || !range.to) return true // Skip incomplete ranges
+          if (!range.from || !range.to) return true
 
           const resourceStart = new Date(range.from)
           const resourceEnd = new Date(range.to)
@@ -390,7 +390,6 @@ export function TasksTab({ projectId }: TasksTabProps) {
       let totalCost: number
 
       if (useMultipleResourceDates && resourceMultiDateRange) {
-        // Process multiple date ranges
         dateRanges = resourceMultiDateRange.ranges
           .filter((range) => range.from && range.to)
           .map((range) => ({
@@ -398,7 +397,6 @@ export function TasksTab({ projectId }: TasksTabProps) {
             endDate: format(range.to!, "yyyy-MM-dd"),
           }))
 
-        // Set overall start/end dates
         const allDates = dateRanges.flatMap((range) => [new Date(range.startDate), new Date(range.endDate)])
         const minDate = new Date(Math.min(...allDates.map((date) => date.getTime())))
         const maxDate = new Date(Math.max(...allDates.map((date) => date.getTime())))
@@ -406,25 +404,21 @@ export function TasksTab({ projectId }: TasksTabProps) {
         startDate = format(minDate, "yyyy-MM-dd")
         endDate = format(maxDate, "yyyy-MM-dd")
 
-        // Calculate total duration across all ranges
         duration = dateRanges.reduce((total, range) => {
           return total + calculateDuration(range.startDate, range.endDate)
         }, 0)
       } else {
-        // Single date range
         startDate = format(resourceDateRange!.from!, "yyyy-MM-dd")
         endDate = format(resourceDateRange!.to!, "yyyy-MM-dd")
         duration = calculateDuration(startDate, endDate)
         dateRanges = undefined
       }
 
-      // Calculate cost
       const costCalc = calculateResourceCost(selectedResourceType, selectedResourceId, quantity, startDate, endDate)
 
       dailyCost = costCalc.dailyCost
       totalCost = useMultipleResourceDates ? duration * dailyCost * quantity : costCalc.totalCost
 
-      // Add resource assignment
       const newAssignment = await addTaskResourceAssignment(projectId, selectedTaskId, {
         resourceId: selectedResourceId,
         resourceType: selectedResourceType,
@@ -434,11 +428,10 @@ export function TasksTab({ projectId }: TasksTabProps) {
         duration,
         dailyCost,
         totalCost,
-        ...(dateRanges?{dateRanges}:{}),
+        ...(dateRanges ? { dateRanges } : {}),
         multipleRanges: useMultipleResourceDates,
       })
 
-      // Update local state
       const updatedTasks = tasks.map((task) => {
         if (task.id === selectedTaskId) {
           return {
@@ -451,7 +444,6 @@ export function TasksTab({ projectId }: TasksTabProps) {
 
       setTasks(updatedTasks)
 
-      // Reset form
       setSelectedResourceId("")
       setResourceQuantity("1")
       setResourceDateRange(undefined)
@@ -469,7 +461,6 @@ export function TasksTab({ projectId }: TasksTabProps) {
       setLoading(true)
       await deleteTaskResourceAssignment(projectId, taskId, assignmentId)
 
-      // Update local state
       const updatedTasks = tasks.map((task) => {
         if (task.id === taskId) {
           return {
@@ -489,24 +480,18 @@ export function TasksTab({ projectId }: TasksTabProps) {
     }
   }
 
-  // Fix the handleChangeTaskStatus function to ensure we're not passing undefined values
-
-  // Replace the handleChangeTaskStatus function with this improved version:
   const handleChangeTaskStatus = async (taskId: string, newStatus: ProjectTask["status"], reason?: string) => {
     try {
       setLoading(true)
 
-      // Create an updates object with only defined values
       const updates: Partial<ProjectTask> = { status: newStatus }
 
-      // Only add statusReason if it's defined and not empty
       if (reason !== undefined && reason.trim() !== "") {
         updates.statusReason = reason
       }
 
       const updatedTask = await updateProjectTask(projectId, taskId, updates)
 
-      // Update local state
       setTasks(tasks.map((task) => (task.id === taskId ? updatedTask : task)))
       setError("")
     } catch (error: any) {
@@ -529,7 +514,6 @@ export function TasksTab({ projectId }: TasksTabProps) {
     const newStatus = statusChangeType === "block" ? "Blocked" : "Postponed"
     handleChangeTaskStatus(taskToChangeStatus, newStatus, statusReason)
 
-    // Close modal and reset state
     setStatusModalOpen(false)
     setTaskToChangeStatus(null)
     setStatusChangeType(null)
@@ -572,7 +556,6 @@ export function TasksTab({ projectId }: TasksTabProps) {
     return task.resources.reduce((total, resource) => total + resource.totalCost, 0)
   }
 
-  // When a task is selected for resource assignment, set the date range to match the task
   useEffect(() => {
     if (selectedTaskId) {
       const task = tasks.find((t) => t.id === selectedTaskId)
@@ -589,24 +572,20 @@ export function TasksTab({ projectId }: TasksTabProps) {
     if (selectedTaskId) {
       const task = tasks.find((t) => t.id === selectedTaskId)
       if (task) {
-        // Create new Date objects to avoid modifying the original dates
         const taskStart = new Date(task.startDate)
         const taskEnd = new Date(task.endDate)
 
-        // Reset hours to ensure proper comparison
         taskStart.setHours(0, 0, 0, 0)
         taskEnd.setHours(0, 0, 0, 0)
         const checkDate = new Date(date)
         checkDate.setHours(0, 0, 0, 0)
 
-        // Check if the date is before the task start date or after the task end date
         return checkDate < taskStart || checkDate > taskEnd
       }
     }
     return false
   }
 
-  // Component for displaying multiple date ranges with a popover
   const DateRangesPopover = ({ dateRanges }: { dateRanges: { startDate: string; endDate: string }[] }) => {
     return (
       <Popover>
@@ -646,7 +625,6 @@ export function TasksTab({ projectId }: TasksTabProps) {
     )
   }
 
-  // Component for displaying resources with a popover
   const ResourcesPopover = ({ task }: { task: ProjectTask }) => {
     const humanResourcesCount = task.resources.filter((r) => r.resourceType === "human").length
     const materialResourcesCount = task.resources.filter((r) => r.resourceType === "material").length
@@ -754,7 +732,6 @@ export function TasksTab({ projectId }: TasksTabProps) {
     )
   }
 
-  // Get status badge color based on status
   const getStatusBadgeColor = (status: ProjectTask["status"]) => {
     switch (status) {
       case "Not Started":
@@ -772,7 +749,6 @@ export function TasksTab({ projectId }: TasksTabProps) {
     }
   }
 
-  // Get priority badge color based on priority
   const getPriorityBadgeColor = (priority: ProjectTask["priority"]) => {
     switch (priority) {
       case "Low":
@@ -784,6 +760,15 @@ export function TasksTab({ projectId }: TasksTabProps) {
       default:
         return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300"
     }
+  }
+
+  const openTaskDetailModal = (task: ProjectTask) => {
+    setSelectedTaskForDetail(task)
+    setTaskDetailModalOpen(true)
+  }
+
+  const handleTaskUpdate = (updatedTask: ProjectTask) => {
+    setTasks(tasks.map((task) => (task.id === updatedTask.id ? updatedTask : task)))
   }
 
   return (
@@ -869,6 +854,24 @@ export function TasksTab({ projectId }: TasksTabProps) {
                 </Label>
               </div>
             </RadioGroup>
+          </div>
+          <div>
+            <label htmlFor="assignedTo" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Assigned To
+            </label>
+            <select
+              id="assignedTo"
+              value={selectedTeamMemberId}
+              onChange={(e) => setSelectedTeamMemberId(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
+            >
+              <option value="">Unassigned</option>
+              {teamMembers.map((member) => (
+                <option key={member.id} value={member.id}>
+                  {member.name}
+                </option>
+              ))}
+            </select>
           </div>
           <div className="mb-4">
             <div className="flex items-center justify-between mb-2">
@@ -1160,442 +1163,6 @@ export function TasksTab({ projectId }: TasksTabProps) {
           <p className="text-red-700 dark:text-red-300">{error}</p>
         </div>
       )}
-
-      {selectedTaskId && tasks.find((t) => t.id === selectedTaskId)?.resources.length > 0 && (
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow">
-          <div className="p-6 border-b border-gray-200 dark:border-gray-700">
-            <h3 className="text-lg font-medium">Resources for {tasks.find((t) => t.id === selectedTaskId)?.name}</h3>
-          </div>
-
-          <div className="divide-y divide-gray-200 dark:divide-gray-700">
-            <div className="p-6">
-              <h4 className="text-md font-medium mb-3">Human Resources</h4>
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                  <thead>
-                    <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        Name
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        Quantity
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        Start Date
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        End Date
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        Duration
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        Daily Cost
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        Total Cost
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        Actions
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                    {tasks.find((t) => t.id === selectedTaskId)?.resources.filter((r) => r.resourceType === "human")
-                      .length > 0 ? (
-                      tasks
-                        .find((t) => t.id === selectedTaskId)
-                        ?.resources.filter((r) => r.resourceType === "human")
-                        .map((resource, index) => (
-                          <tr
-                            key={resource.id}
-                            className={index % 2 === 0 ? "bg-white dark:bg-gray-900" : "bg-gray-50 dark:bg-gray-800"}
-                          >
-                            <td className="px-4 py-4 whitespace-nowrap">
-                              {getResourceName("human", resource.resourceId)}
-                            </td>
-                            <td className="px-4 py-4 whitespace-nowrap">{resource.quantity}</td>
-                            <td className="px-4 py-4">
-                              {resource.multipleRanges && resource.dateRanges && resource.dateRanges.length > 0 ? (
-                                <DateRangesPopover dateRanges={resource.dateRanges} />
-                              ) : (
-                                formatDate(resource.startDate)
-                              )}
-                            </td>
-                            <td className="px-4 py-4">
-                              {resource.multipleRanges && resource.dateRanges && resource.dateRanges.length > 0 ? (
-                                <span className="text-xs italic text-gray-500">See periods</span>
-                              ) : (
-                                formatDate(resource.endDate)
-                              )}
-                            </td>
-                            <td className="px-4 py-4 whitespace-nowrap">{resource.duration} days</td>
-                            <td className="px-4 py-4 whitespace-nowrap">{formatCurrency(resource.dailyCost)}</td>
-                            <td className="px-4 py-4 whitespace-nowrap font-medium">
-                              {formatCurrency(resource.totalCost)}
-                            </td>
-                            <td className="px-4 py-4 whitespace-nowrap">
-                              <button
-                                onClick={() => handleDeleteResourceAssignment(selectedTaskId, resource.id)}
-                                className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300"
-                                disabled={loading}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </button>
-                            </td>
-                          </tr>
-                        ))
-                    ) : (
-                      <tr>
-                        <td colSpan={8} className="px-4 py-4 text-center text-gray-500 dark:text-gray-400">
-                          No human resources assigned
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            <div className="p-6">
-              <h4 className="text-md font-medium mb-3">Material Resources</h4>
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                  <thead>
-                    <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        Name
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        Quantity
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        Start Date
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        End Date
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        Duration
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        Daily Cost
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        Total Cost
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        Actions
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                    {tasks.find((t) => t.id === selectedTaskId)?.resources.filter((r) => r.resourceType === "material")
-                      .length > 0 ? (
-                      tasks
-                        .find((t) => t.id === selectedTaskId)
-                        ?.resources.filter((r) => r.resourceType === "material")
-                        .map((resource, index) => (
-                          <tr
-                            key={resource.id}
-                            className={index % 2 === 0 ? "bg-white dark:bg-gray-900" : "bg-gray-50 dark:bg-gray-800"}
-                          >
-                            <td className="px-4 py-4 whitespace-nowrap">
-                              {getResourceName("material", resource.resourceId)}
-                            </td>
-                            <td className="px-4 py-4 whitespace-nowrap">{resource.quantity}</td>
-                            <td className="px-4 py-4">
-                              {resource.multipleRanges && resource.dateRanges && resource.dateRanges.length > 0 ? (
-                                <DateRangesPopover dateRanges={resource.dateRanges} />
-                              ) : (
-                                formatDate(resource.startDate)
-                              )}
-                            </td>
-                            <td className="px-4 py-4">
-                              {resource.multipleRanges && resource.dateRanges && resource.dateRanges.length > 0 ? (
-                                <span className="text-xs italic text-gray-500">See periods</span>
-                              ) : (
-                                formatDate(resource.endDate)
-                              )}
-                            </td>
-                            <td className="px-4 py-4 whitespace-nowrap">{resource.duration} days</td>
-                            <td className="px-4 py-4 whitespace-nowrap">{formatCurrency(resource.dailyCost)}</td>
-                            <td className="px-4 py-4 whitespace-nowrap font-medium">
-                              {formatCurrency(resource.totalCost)}
-                            </td>
-                            <td className="px-4 py-4 whitespace-nowrap">
-                              <button
-                                onClick={() => handleDeleteResourceAssignment(selectedTaskId, resource.id)}
-                                className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300"
-                                disabled={loading}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </button>
-                            </td>
-                          </tr>
-                        ))
-                    ) : (
-                      <tr>
-                        <td colSpan={8} className="px-4 py-4 text-center text-gray-500 dark:text-gray-400">
-                          No material resources assigned
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            <div className="p-4 bg-gray-50 dark:bg-gray-700">
-              <div className="text-right font-medium">
-                Total task cost: {formatCurrency(calculateTaskTotalCost(tasks.find((t) => t.id === selectedTaskId)!))}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div className="mt-8">
-        <h3 className="text-lg font-medium mb-4">Tasks</h3>
-        {loading && !tasks.length ? (
-          <div className="flex justify-center py-8">
-            <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
-          </div>
-        ) : tasks.length > 0 ? (
-          <div className="overflow-x-auto bg-white dark:bg-gray-800 rounded-lg shadow">
-            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-              <thead>
-                <tr className="bg-gray-50 dark:bg-gray-700">
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    Task Name
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    Activity
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    Status
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    Priority
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    Start Date
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    End Date
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    Duration
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    Resources
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    Cost
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                {tasks.map((task, index) => (
-                  <tr
-                    key={task.id}
-                    className={index % 2 === 0 ? "bg-white dark:bg-gray-900" : "bg-gray-50 dark:bg-gray-800"}
-                  >
-                    <td className="px-4 py-4">
-                      <div className="font-medium">{task.name}</div>
-                      {task.description && (
-                        <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">{task.description}</div>
-                      )}
-                      {task.statusReason && (
-                        <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 italic">
-                          Reason: {task.statusReason}
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-4 py-4 whitespace-nowrap">{getActivityName(task.activityId)}</td>
-                    <td className="px-4 py-4 whitespace-nowrap">
-                      <Badge className={getStatusBadgeColor(task.status || "Not Started")}>
-                        {task.status || "Not Started"}
-                      </Badge>
-                    </td>
-                    <td className="px-4 py-4 whitespace-nowrap">
-                      <Badge className={getPriorityBadgeColor(task.priority || "Medium")}>
-                        {task.priority || "Medium"}
-                      </Badge>
-                    </td>
-                    <td className="px-4 py-4">
-                      {task.multipleRanges && task.dateRanges && task.dateRanges.length > 0 ? (
-                        <DateRangesPopover dateRanges={task.dateRanges} />
-                      ) : (
-                        formatDate(task.startDate)
-                      )}
-                    </td>
-                    <td className="px-4 py-4">
-                      {task.multipleRanges && task.dateRanges && task.dateRanges.length > 0 ? (
-                        <span className="text-xs italic text-gray-500">See periods</span>
-                      ) : (
-                        formatDate(task.endDate)
-                      )}
-                    </td>
-                    <td className="px-4 py-4 whitespace-nowrap">
-                      {task.multipleRanges && task.dateRanges ? (
-                        <span>{task.duration} days</span>
-                      ) : (
-                        <span>{task.duration} days</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-4 whitespace-nowrap">
-                      <ResourcesPopover task={task} />
-                    </td>
-                    <td className="px-4 py-4 whitespace-nowrap font-medium">
-                      {formatCurrency(calculateTaskTotalCost(task))}
-                    </td>
-                    <td className="px-4 py-4 whitespace-nowrap">
-                      <div className="flex flex-col space-y-2">
-                        <div className="flex space-x-2">
-                          <button
-                            onClick={() => handleEditTask(task)}
-                            className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
-                            disabled={loading}
-                          >
-                            <Edit className="h-4 w-4" />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteTask(task.id)}
-                            className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300"
-                            disabled={loading}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </div>
-
-                        {/* Status action buttons */}
-                        <div className="flex flex-wrap gap-1 mt-1">
-                          {task.status === "Not Started" && (
-                            <>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-7 px-2 text-xs"
-                                onClick={() => handleChangeTaskStatus(task.id, "In Progress")}
-                              >
-                                <Play className="h-3 w-3 mr-1" /> Start
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-7 px-2 text-xs text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
-                                onClick={() => openStatusChangeModal(task.id, "block")}
-                              >
-                                <Ban className="h-3 w-3 mr-1" /> Block
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-7 px-2 text-xs text-yellow-600 border-yellow-200 hover:bg-yellow-50 hover:text-yellow-700"
-                                onClick={() => openStatusChangeModal(task.id, "postpone")}
-                              >
-                                <Clock className="h-3 w-3 mr-1" /> Postpone
-                              </Button>
-                            </>
-                          )}
-
-                          {task.status === "In Progress" && (
-                            <>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-7 px-2 text-xs text-green-600 border-green-200 hover:bg-green-50 hover:text-green-700"
-                                onClick={() => handleChangeTaskStatus(task.id, "Completed")}
-                              >
-                                <CheckCircle className="h-3 w-3 mr-1" /> Complete
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-7 px-2 text-xs text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
-                                onClick={() => openStatusChangeModal(task.id, "block")}
-                              >
-                                <Ban className="h-3 w-3 mr-1" /> Block
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-7 px-2 text-xs text-yellow-600 border-yellow-200 hover:bg-yellow-50 hover:text-yellow-700"
-                                onClick={() => openStatusChangeModal(task.id, "postpone")}
-                              >
-                                <Clock className="h-3 w-3 mr-1" /> Postpone
-                              </Button>
-                            </>
-                          )}
-
-                          {(task.status === "Blocked" || task.status === "Postponed") && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-7 px-2 text-xs"
-                              onClick={() => handleChangeTaskStatus(task.id, "In Progress")}
-                            >
-                              <Play className="h-3 w-3 mr-1" /> Start
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <div className="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-8 text-center">
-            <p className="text-gray-500 dark:text-gray-400">No tasks found. Add your first task to get started.</p>
-          </div>
-        )}
-      </div>
-
-      {/* Status change reason modal */}
-      <Dialog open={statusModalOpen} onOpenChange={setStatusModalOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{statusChangeType === "block" ? "Block Task" : "Postpone Task"}</DialogTitle>
-            <DialogDescription>
-              Please provide a reason for {statusChangeType === "block" ? "blocking" : "postponing"} this task.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="py-4">
-            <Label htmlFor="statusReason" className="mb-2 block">
-              Reason
-            </Label>
-            <Textarea
-              id="statusReason"
-              value={statusReason}
-              onChange={(e) => setStatusReason(e.target.value)}
-              placeholder={`Why are you ${statusChangeType === "block" ? "blocking" : "postponing"} this task?`}
-              className="min-h-[100px]"
-            />
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setStatusModalOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={handleStatusChangeConfirm}
-              disabled={!statusReason.trim()}
-              className={
-                statusChangeType === "block" ? "bg-red-600 hover:bg-red-700" : "bg-yellow-600 hover:bg-yellow-700"
-              }
-            >
-              Confirm
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }

@@ -38,6 +38,7 @@ import { ActivityDetailModal } from "../modals/activity-detail-modal"
 import { TaskDetailModal } from "../modals/task-detail-modal"
 import { DeliverableDetailModal } from "../modals/deliverable-detail-modal"
 import { DecisionGateDetailModal } from "../modals/decision-gate-detail-modal"
+import { getTeamMembers } from "@/services/team-member-service"
 
 export default function ProjectOwnerDashboard() {
   const { userProfile, user } = useAuth()
@@ -59,6 +60,7 @@ export default function ProjectOwnerDashboard() {
     activeProjects: 0,
     totalDonations: 0,
     pendingApprovals: 0,
+    teamMembersCount: 0,
   })
 
   const [selectedActivity, setSelectedActivity] = useState<ProjectActivity | null>(null)
@@ -230,6 +232,23 @@ export default function ProjectOwnerDashboard() {
     }
   }, [selectedProject, humanResources, materialResources])
 
+  const fetchTeamMembers = async () => {
+    if (!user?.uid) return
+
+    try {
+      // Fetch team members by owner ID, not by project ID
+      const members = await getTeamMembers(user.uid)
+
+      // Update the stats with the correct team member count
+      setStats((prevStats) => ({
+        ...prevStats,
+        teamMembersCount: members.length,
+      }))
+    } catch (error) {
+      console.error("Error fetching team members:", error)
+    }
+  }
+
   useEffect(() => {
     async function fetchUserProjects() {
       if (!user?.uid) return
@@ -252,6 +271,7 @@ export default function ProjectOwnerDashboard() {
           activeProjects,
           totalDonations,
           pendingApprovals,
+          teamMembersCount: 0, // Will be updated by fetchTeamMembers
         })
 
         if (projectsData.length > 0) {
@@ -299,7 +319,8 @@ export default function ProjectOwnerDashboard() {
     }
 
     fetchUserProjects()
-  }, [user?.uid])
+    fetchTeamMembers() // This will now fetch by owner ID
+  }, [user?.uid]) // Depend on user.uid, not projectId
 
   // Handle project selection change
   const handleProjectChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -513,7 +534,7 @@ export default function ProjectOwnerDashboard() {
               <Users className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{humanResources.length}</div>
+              <div className="text-2xl font-bold">{stats.teamMembersCount || 0}</div>
               <p className="text-xs text-muted-foreground">Across all projects</p>
             </CardContent>
           </Card>
