@@ -22,7 +22,7 @@ import { useRouter } from "next/navigation"
 import type { Project, ProjectTask } from "@/types/project"
 import { Switch } from "@/components/ui/switch"
 import { updateProjectStatus } from "@/services/project-service"
-import { toast } from "@/components/ui/use-toast"
+import { useToast } from "@/hooks/use-toast"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import dayjs from "dayjs"
@@ -64,6 +64,8 @@ export function ProjectCard({ project, onEdit, showEditButton = false, onRequest
     const [overallProgress, setOverallProgress] = useState(0)
     const [executionProgress, setExecutionProgress] = useState(0)
     const [firstTaskCost, setFirstTaskCost] = useState(0)
+    const [pendingApproval, setPendingApproval] = useState(false)
+    const { toast } = useToast()
 
     // Check if the project meets all requirements for announcement and execution
     useEffect(() => {
@@ -248,7 +250,12 @@ export function ProjectCard({ project, onEdit, showEditButton = false, onRequest
 
             // Can announce if all requirements are met AND (has been approved before OR is currently approved)
             const allRequirementsMet = allSections.every((section) => section.allMet)
-            setCanAnnounce(allRequirementsMet && (wasApproved || project.approvalStatus === "approved"))
+            // setCanAnnounce(allRequirementsMet && (wasApproved || project.approvalStatus === "approved"))
+            setCanAnnounce(allRequirementsMet)
+
+            if (!hasBeenApprovedBefore && project.approvalStatus === "pending") {
+                setPendingApproval(true)
+            }
 
             // Check execution requirements
             // 1. Find the first task (by start date)
@@ -339,6 +346,7 @@ export function ProjectCard({ project, onEdit, showEditButton = false, onRequest
 
     // Handle toggle for project announcement
     const handleAnnouncementToggle = async () => {
+        console.log("canAnnounce: ", canAnnounce);
         // If missing requirements, show the modal
         if (!canAnnounce) {
             setShowRequirementsModal(true)
@@ -418,6 +426,10 @@ export function ProjectCard({ project, onEdit, showEditButton = false, onRequest
     const getAnnouncementStatusMessage = () => {
         if (!canAnnounce) {
             return `${overallProgress}% complete`
+        }
+
+        if (!hasBeenApprovedBefore && project.approvalStatus === "pending") {
+            return "Pending approval"
         }
 
         if (!hasBeenApprovedBefore && project.approvalStatus !== "approved") {
@@ -536,7 +548,7 @@ export function ProjectCard({ project, onEdit, showEditButton = false, onRequest
                                     <Switch
                                         checked={isAnnouncedToDonors}
                                         onCheckedChange={handleAnnouncementToggle}
-                                        disabled={isUpdating}
+                                        disabled={isUpdating || pendingApproval}
                                     />
                                 </div>
                             </div>

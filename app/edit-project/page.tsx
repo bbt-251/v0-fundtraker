@@ -2,24 +2,23 @@
 
 import type React from "react"
 
-import { useState, useEffect } from "react"
-import { useSearchParams, useRouter } from "next/navigation"
-import { useAuth } from "@/contexts/auth-context"
-import { ArrowLeft, Save, Loader2 } from "lucide-react"
-import Link from "next/link"
-import { ThemeToggle } from "@/components/theme-toggle"
-import { Button } from "@/components/ui/button"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { ProjectDefinitionStepper } from "@/components/project-definition-stepper"
 import { BusinessDocumentation } from "@/components/business-documentation"
+import { FinancialResourceTab } from "@/components/financial-resource-tab"
 import { HumanResourceTab } from "@/components/human-resource-tab"
 import { MaterialResourceTab } from "@/components/material-resource-tab"
-import { getProject, updateProject, uploadProjectDocument } from "@/services/project-service"
-import type { Project } from "@/types/project"
-import { FinancialResourceTab } from "@/components/financial-resource-tab"
+import { ProjectCommunicationTab } from "@/components/project-communication-tab"
+import { ProjectDefinitionStepper } from "@/components/project-definition-stepper"
 import { ProjectPlanningTab } from "@/components/project-planning-tab"
 import { ProjectRisksTab } from "@/components/project-risks-tab"
-import { ProjectCommunicationTab } from "@/components/project-communication-tab"
+import { Button } from "@/components/ui/button"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { useAuth } from "@/contexts/auth-context"
+import { getProject, updateProject, uploadProjectDocument } from "@/services/project-service"
+import type { Project } from "@/types/project"
+import { ArrowLeft, Loader2 } from "lucide-react"
+import Link from "next/link"
+import { useRouter, useSearchParams } from "next/navigation"
+import { useEffect, useState } from "react"
 
 export default function EditProjectPage() {
     const router = useRouter()
@@ -60,7 +59,7 @@ export default function EditProjectPage() {
                 const fetchedProject = await getProject(projectId)
 
                 // Check if the project belongs to the current user
-                if (fetchedProject.userId !== user.uid) {
+                if (fetchedProject?.userId !== user.uid) {
                     router.push("/my-projects")
                     return
                 }
@@ -181,7 +180,7 @@ export default function EditProjectPage() {
         <div className="min-h-screen bg-gray-50 dark:bg-gray-900 pb-12">
             {/* Header */}
             <header className="bg-white dark:bg-gray-800 shadow mb-8">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
+                <div className="max-w mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
                     <div className="flex items-center">
                         <Link
                             href="/my-projects"
@@ -194,7 +193,7 @@ export default function EditProjectPage() {
                 </div>
             </header>
 
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="max-w mx-auto px-4 sm:px-6 lg:px-8">
                 <div className="bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
                     {/* Form Header */}
                     <div className="px-8 py-6 border-b border-gray-200 dark:border-gray-700">
