@@ -10,7 +10,7 @@ import { ArrowLeft, Loader2 } from "lucide-react"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { LoadingAnimation } from "@/components/loading-animation"
 import type { UserRole } from "@/types/user"
-import { useToast } from "@/components/ui/toast"
+import { useToast } from "@/hooks/use-toast"
 import { useRouter } from "next/navigation" // Import the router
 
 export default function SignupPage() {

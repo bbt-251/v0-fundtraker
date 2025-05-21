@@ -18,7 +18,7 @@ import { EditTeamMemberModal } from "@/components/modals/edit-team-member-modal"
 import { useAuth } from "@/contexts/auth-context"
 import { getTeamMembers, deleteTeamMember } from "@/services/team-member-service"
 import type { TeamMember } from "@/types/team-member"
-import { useToast } from "@/components/ui/use-toast"
+import { useToast } from "@/hooks/use-toast"
 import {
   Dialog,
   DialogContent,

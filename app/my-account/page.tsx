@@ -7,7 +7,7 @@ import { useAuth } from "@/contexts/auth-context"
 import { motion } from "framer-motion"
 import { Shield, AlertCircle, Upload, Check, X, Loader2, Calendar, Phone, UserIcon, MapPin } from "lucide-react"
 import { updatePersonalInfo, updateAddressInfo, uploadVerificationDocument } from "@/services/user-service"
-import { useToast } from "@/components/ui/toast"
+import { useToast } from "@/hooks/use-toast"
 import type { VerificationDocument } from "@/types/user"
 
 export default function MyAccountPage() {
