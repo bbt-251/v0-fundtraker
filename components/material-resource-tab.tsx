@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Pencil, Trash2, Plus, Loader2 } from "lucide-react"
+import { Pencil, Trash2, Plus, Loader2, Upload } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast"
 import { addMaterialResource, deleteMaterialResource, updateMaterialResource } from "@/services/project-service"
 import type { MaterialResource } from "@/types/project"
+import { ImportMaterialResourceModal } from "./modals/import_material_resource_modal"
 
 interface MaterialResourceTabProps {
     projectId: string
@@ -28,6 +29,7 @@ export function MaterialResourceTab({ projectId, initialResources }: MaterialRes
     const [isLoading, setIsLoading] = useState(false)
     const [editingMaterial, setEditingMaterial] = useState<MaterialResource | null>(null)
     const { toast } = useToast()
+    const [importModalOpen, setImportModalOpen] = useState(false)
 
     const handleAddMaterial = async () => {
         if (!newMaterial.trim() || !newType) {
@@ -166,9 +168,22 @@ export function MaterialResourceTab({ projectId, initialResources }: MaterialRes
         <div className="space-y-6">
             {/* Add Material Resource Form */}
             <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6">
-                <h3 className="text-lg font-semibold mb-4">
-                    {editingMaterial ? "Edit Material Resource" : "Add Material Resource"}
-                </h3>
+                <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-lg font-semibold mb-4">
+                        {editingMaterial ? "Edit Material Resource" : "Add Material Resource"}
+                    </h3>
+                    <div className="flex space-x-2">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setImportModalOpen(true)}
+                            className="flex items-center"
+                        >
+                            <Upload className="mr-1 h-4 w-4" />
+                            Import
+                        </Button>
+                    </div>
+                </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                     <div>
@@ -369,6 +384,19 @@ export function MaterialResourceTab({ projectId, initialResources }: MaterialRes
                     </div>
                 )}
             </div>
+
+            <ImportMaterialResourceModal
+                isOpen={importModalOpen}
+                onClose={() => setImportModalOpen(false)}
+                onResourcesImported={(newResources) => {
+                    setMaterials((prev) => [...prev, ...newResources])
+                    toast({
+                        title: "Success",
+                        description: "Material resources imported successfully",
+                    })
+                }}
+                projectId={projectId}
+            />
         </div>
     )
 }
