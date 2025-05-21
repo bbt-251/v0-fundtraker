@@ -26,6 +26,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Textarea } from "./ui/textarea"
 import { Badge } from "./ui/badge"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu"
+import { ImportAssignResourcesModal } from "./modals/assign_resource_to_task"
 
 interface TasksTabProps {
     projectId: string
@@ -44,6 +45,7 @@ export function TasksTab({ projectId, userId }: TasksTabProps) {
     const [taskDetailModalOpen, setTaskDetailModalOpen] = useState(false)
     const [selectedTaskForDetail, setSelectedTaskForDetail] = useState<ProjectTask | null>(null)
     const [importModalOpen, setImportModalOpen] = useState(false)
+    const [assignResourceFromImportModalOpen, setAssignResourceFromImportModalOpen] = useState(false)
 
     const [taskName, setTaskName] = useState("")
     const [taskDescription, setTaskDescription] = useState("")
@@ -75,7 +77,6 @@ export function TasksTab({ projectId, userId }: TasksTabProps) {
     const [taskToDelete, setTaskToDelete] = useState<ProjectTask | null>(null)
     const [deleteModalOpen, setDeleteModalOpen] = useState(false)
 
-
     useEffect(() => {
         fetchProjectData()
         fetchTeamMembers()
@@ -85,8 +86,6 @@ export function TasksTab({ projectId, userId }: TasksTabProps) {
         try {
             setLoading(true)
             const project = await getProject(projectId)
-            console.log("project: ", project)
-            console.log("project.tasks: ", project?.tasks)
             if (project) {
                 setActivities(project.activities || [])
                 setTasks(project.tasks || [])
@@ -968,7 +967,20 @@ export function TasksTab({ projectId, userId }: TasksTabProps) {
             </div>
 
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-                <h3 className="text-lg font-medium mb-4">Assign Resources to Tasks</h3>
+                <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-lg font-medium mb-4">Assign Resources to Tasks</h3>
+                    <div className="flex space-x-2">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setAssignResourceFromImportModalOpen(true)}
+                            className="flex items-center"
+                        >
+                            <Upload className="mr-1 h-4 w-4" />
+                            Import
+                        </Button>
+                    </div>
+                </div>
                 <div className="space-y-4">
                     <div>
                         <label htmlFor="selectTask" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -1439,6 +1451,18 @@ export function TasksTab({ projectId, userId }: TasksTabProps) {
                 onTasksImported={(tasks) => setTasks((prevTasks) => [...prevTasks, ...tasks])}
                 activities={activities}
                 teamMembers={teamMembers}
+            />
+
+            <ImportAssignResourcesModal
+                isOpen={assignResourceFromImportModalOpen}
+                onClose={() => setAssignResourceFromImportModalOpen(false)}
+                humanResources={humanResources}
+                materialResources={materialResources}
+                tasks={tasks}
+                onAssignmentsImported={() => {
+                    fetchProjectData()
+                }}
+                projectId={projectId}
             />
         </div >
     )
