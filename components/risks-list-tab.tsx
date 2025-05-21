@@ -5,24 +5,27 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
-import { AlertTriangle, Edit, Trash2, AlertCircle, Info } from "lucide-react"
-import type { ProjectRisk } from "@/types/project"
+import { AlertTriangle, Edit, Trash2, AlertCircle, Info, Upload } from "lucide-react"
+import type { ProjectActivity, ProjectRisk } from "@/types/project"
 import { deleteProjectRisk } from "@/services/project-service"
 import { useToast } from "@/hooks/use-toast"
+import { ImportRiskModal } from "./modals/import_risk_modal"
 
 interface RisksListTabProps {
     projectId: string
     risks: ProjectRisk[]
     onRiskUpdated: (risk: ProjectRisk) => void
     onRiskDeleted: (riskId: string) => void
+    activities: ProjectActivity[]
 }
 
-export function RisksListTab({ projectId, risks, onRiskUpdated, onRiskDeleted }: RisksListTabProps) {
+export function RisksListTab({ projectId, risks, onRiskUpdated, onRiskDeleted, activities }: RisksListTabProps) {
     const [loading, setLoading] = useState(false)
     const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
     const [selectedRisk, setSelectedRisk] = useState<ProjectRisk | null>(null)
     const [detailsDialogOpen, setDetailsDialogOpen] = useState(false)
     const { toast } = useToast()
+    const [importModalOpen, setImportModalOpen] = useState(false);
 
     const handleDelete = async () => {
         if (!selectedRisk) return
@@ -101,7 +104,20 @@ export function RisksListTab({ projectId, risks, onRiskUpdated, onRiskDeleted }:
 
     return (
         <div className="bg-[#1a2332] text-white rounded-md">
-            <h2 className="text-xl font-semibold mb-4">Project Risks</h2>
+            <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-semibold mb-4">Project Risks</h2>
+                <div className="flex space-x-2">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setImportModalOpen(true)}
+                        className="flex items-center"
+                    >
+                        <Upload className="mr-1 h-4 w-4" />
+                        Import
+                    </Button>
+                </div>
+            </div>
 
             {risks.length === 0 ? (
                 <div className="text-center py-8 text-gray-400">No risks have been added to this project yet.</div>
@@ -259,6 +275,18 @@ export function RisksListTab({ projectId, risks, onRiskUpdated, onRiskDeleted }:
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
+            <ImportRiskModal
+                isOpen={importModalOpen}
+                onClose={() => setImportModalOpen(false)}
+                activities={activities}
+                onRisksImported={(risks) => {
+                    risks.forEach((risk) => {
+                        onRiskUpdated(risk)
+                    })
+                }}
+                projectId={projectId}
+            />
         </div>
     )
 }
