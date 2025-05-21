@@ -1,13 +1,13 @@
 "use client"
 
 import { useState } from "react"
-import { Pencil, Trash2, Plus, Loader2 } from "lucide-react"
+import { Pencil, Trash2, Plus, Loader2, Upload } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { toast } from "@/components/ui/use-toast"
 import { addHumanResource, deleteHumanResource, updateHumanResource } from "@/services/project-service"
 import type { HumanResource } from "@/types/project"
 import { useToast } from "@/hooks/use-toast"
+import { ImportHumanResourcesModal } from "./modals/import_human_resource_modal"
 
 interface HumanResourceTabProps {
     projectId: string
@@ -22,6 +22,7 @@ export function HumanResourceTab({ projectId, initialResources }: HumanResourceT
     const [isLoading, setIsLoading] = useState(false)
     const [editingResource, setEditingResource] = useState<HumanResource | null>(null)
     const { toast } = useToast()
+    const [importModalOpen, setImportModalOpen] = useState(false)
 
     const handleAddRole = async () => {
         if (!newRole.trim()) {
@@ -137,7 +138,20 @@ export function HumanResourceTab({ projectId, initialResources }: HumanResourceT
         <div className="space-y-6">
             {/* Add Project Role Form */}
             <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6">
-                <h3 className="text-lg font-semibold mb-4">{editingResource ? "Edit Project Role" : "Add Project Role"}</h3>
+                <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-lg font-semibold mb-4">{editingResource ? "Edit Project Role" : "Add Project Role"}</h3>
+                    <div className="flex space-x-2">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setImportModalOpen(true)}
+                            className="flex items-center"
+                        >
+                            <Upload className="mr-1 h-4 w-4" />
+                            Import
+                        </Button>
+                    </div>
+                </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
@@ -276,6 +290,16 @@ export function HumanResourceTab({ projectId, initialResources }: HumanResourceT
                     </div>
                 )}
             </div>
+
+            <ImportHumanResourcesModal
+                isOpen={importModalOpen}
+                onClose={() => setImportModalOpen(false)}
+                onResourcesImported={(newResources) => {
+                    setResources((prevResources) => [...prevResources, ...newResources])
+                    setImportModalOpen(false)
+                }}
+                projectId={projectId}
+            />
         </div>
     )
 }
