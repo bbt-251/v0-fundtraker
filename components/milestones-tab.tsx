@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Pencil, Trash2, Plus, Loader2 } from "lucide-react"
+import { Pencil, Trash2, Plus, Loader2, Upload } from "lucide-react"
 import { formatDate } from "@/lib/utils/date-utils"
 import {
     getProject,
@@ -28,6 +28,7 @@ import type { ProjectMilestone, ProjectDeliverable } from "@/types/project"
 import { DatePicker } from "@/components/ui/ant-date-picker"
 import { cn } from "@/lib/utils"
 import { format } from "date-fns"
+import { ImportMilestonesModal } from "./modals/import_milestones_modal"
 
 interface MilestonesTabProps {
     projectId: string
@@ -43,6 +44,7 @@ export function MilestonesTab({ projectId }: MilestonesTabProps) {
     const [deliverables, setDeliverables] = useState<ProjectDeliverable[]>([])
     const [isLoading, setIsLoading] = useState(true)
     const [isSubmitting, setIsSubmitting] = useState(false) // New state for button loading
+    const [importModalOpen, setImportModalOpen] = useState(false)
 
     // Form state
     const [milestoneName, setMilestoneName] = useState("")
@@ -123,11 +125,12 @@ export function MilestonesTab({ projectId }: MilestonesTabProps) {
 
         try {
             setIsSubmitting(true) // Start loading
-            const milestoneData = {
+            const milestoneData: Omit<ProjectMilestone, "id" | "createdAt"> = {
                 name: milestoneName,
                 description,
                 date: date ? format(date, "yyyy-MM-dd") : "",
                 associatedDeliverables: selectedDeliverables,
+                status: "Not Started"
             }
 
             if (editingMilestone) {
@@ -179,10 +182,23 @@ export function MilestonesTab({ projectId }: MilestonesTabProps) {
         <div className="space-y-4">
             <div className="flex justify-between items-center">
                 <h3 className="text-lg font-medium">Project Milestones</h3>
-                <Button onClick={() => handleOpenDialog()} className="flex items-center gap-2">
-                    <Plus className="h-4 w-4" />
-                    Add Milestone
-                </Button>
+                <div className="flex justify-between items-center mb-4">
+                    <div className="flex space-x-2">
+                        <Button onClick={() => handleOpenDialog()} className="flex items-center gap-2">
+                            <Plus className="h-4 w-4" />
+                            Add Milestone
+                        </Button>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setImportModalOpen(true)}
+                            className="flex items-center"
+                        >
+                            <Upload className="mr-1 h-4 w-4" />
+                            Import
+                        </Button>
+                    </div>
+                </div>
             </div>
 
             {isLoading ? (
@@ -368,6 +384,14 @@ export function MilestonesTab({ projectId }: MilestonesTabProps) {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
+            <ImportMilestonesModal
+                isOpen={importModalOpen}
+                onClose={() => setImportModalOpen(false)}
+                deliverables={deliverables}
+                onMilestonesImported={(milestones) => setMilestones((milestone) => [...milestone, ...milestones])}
+                projectId={projectId}
+            />
         </div>
     )
 }
