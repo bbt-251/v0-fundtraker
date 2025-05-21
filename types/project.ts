@@ -156,6 +156,7 @@ export interface ProjectDeliverable {
     deadline: string
     status: "Not Started" | "In Progress" | "Completed" | "Delayed"
     successCriteria?: SuccessCriteria[]
+    dependentActivities?: string[] // Activity IDs
     createdAt: string
 }
 

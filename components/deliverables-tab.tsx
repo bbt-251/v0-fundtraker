@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
-import { Edit, Trash2, Plus, Loader2, Info } from "lucide-react"
+import { Edit, Trash2, Plus, Loader2, Info, Upload } from "lucide-react"
 import {
     getProject,
     addProjectDeliverable,
@@ -14,6 +14,8 @@ import type { ProjectDeliverable } from "@/types/project"
 import { format } from "date-fns"
 import { DatePicker } from "@/components/ui/ant-date-picker"
 import { Select, Tooltip } from "antd"
+import { v4 } from "uuid"
+import { ImportDeliverablesModal } from "./modals/import_deliverables_modal"
 
 interface DeliverablesTabProps {
     projectId: string
@@ -27,6 +29,7 @@ export function DeliverablesTab({ projectId }: DeliverablesTabProps) {
     const [selectedActivities, setSelectedActivities] = useState<string[]>([])
     const [successCriteria, setSuccessCriteria] = useState<string[]>([])
     const [criteriaInput, setCriteriaInput] = useState("")
+    const [importModalOpen, setImportModalOpen] = useState(false)
 
     // Form state
     const [deliverableName, setDeliverableName] = useState("")
@@ -44,7 +47,9 @@ export function DeliverablesTab({ projectId }: DeliverablesTabProps) {
         try {
             setLoading(true)
             const project = await getProject(projectId)
-            setDeliverables(project.deliverables || [])
+            if (project) {
+                setDeliverables(project.deliverables || [])
+            }
 
             // Fetch activities for this project
             const projectActivities = await getProjectActivities(projectId)
@@ -91,7 +96,7 @@ export function DeliverablesTab({ projectId }: DeliverablesTabProps) {
                     description: deliverableDescription,
                     deadline,
                     dependentActivities: selectedActivities,
-                    successCriteria,
+                    successCriteria: successCriteria.map(s => ({ id: v4(), description: s })),
                 })
 
                 // Update local state
@@ -107,7 +112,8 @@ export function DeliverablesTab({ projectId }: DeliverablesTabProps) {
                     description: deliverableDescription,
                     deadline,
                     dependentActivities: selectedActivities,
-                    successCriteria,
+                    successCriteria: successCriteria.map(s => ({ id: v4(), description: s })),
+                    status: "Not Started",
                 })
 
                 // Update local state
@@ -135,7 +141,7 @@ export function DeliverablesTab({ projectId }: DeliverablesTabProps) {
         setDeliverableDescription(deliverable.description)
         setDeliverableDeadline(new Date(deliverable.deadline))
         setSelectedActivities(deliverable.dependentActivities || [])
-        setSuccessCriteria(deliverable.successCriteria || [])
+        setSuccessCriteria(deliverable.successCriteria?.map((criteria) => criteria.description) || [])
         setIsEditing(true)
         setCurrentDeliverableId(deliverable.id)
     }
@@ -198,7 +204,20 @@ export function DeliverablesTab({ projectId }: DeliverablesTabProps) {
             )}
 
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-                <h3 className="text-lg font-medium mb-4">{isEditing ? "Edit Deliverable" : "Add New Deliverable"}</h3>
+                <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-lg font-medium mb-4">{isEditing ? "Edit Deliverable" : "Add New Deliverable"}</h3>
+                    <div className="flex space-x-2">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setImportModalOpen(true)}
+                            className="flex items-center"
+                        >
+                            <Upload className="mr-1 h-4 w-4" />
+                            Import
+                        </Button>
+                    </div>
+                </div>
                 <div className="space-y-4">
                     <div>
                         <label
@@ -406,16 +425,16 @@ export function DeliverablesTab({ projectId }: DeliverablesTabProps) {
                                                 <Tooltip
                                                     title={
                                                         <div>
-                                                            {deliverable.successCriteria.map((criteria, i) => (
+                                                            {deliverable?.successCriteria?.map((criteria, i) => (
                                                                 <div key={i} className="py-1">
-                                                                    • {criteria}
+                                                                    • {criteria.description}
                                                                 </div>
                                                             ))}
                                                         </div>
                                                     }
                                                 >
                                                     <div className="flex items-center cursor-help">
-                                                        {formatSuccessCriteria(deliverable.successCriteria)}
+                                                        {formatSuccessCriteria(deliverable.successCriteria?.map(c => c.description))}
                                                         {deliverable.successCriteria.length > 2 && <Info className="h-4 w-4 ml-1 text-blue-500" />}
                                                     </div>
                                                 </Tooltip>
@@ -454,6 +473,14 @@ export function DeliverablesTab({ projectId }: DeliverablesTabProps) {
                     </div>
                 )}
             </div>
+
+            <ImportDeliverablesModal
+                isOpen={importModalOpen}
+                onClose={() => setImportModalOpen(false)}
+                activities={activities}
+                onDeliverablesImported={(del) => setDeliverables((prevDel) => [...prevDel, ...del])}
+                projectId={projectId}
+            />
         </div>
     )
 }
