@@ -4,7 +4,7 @@ import { initializeApp, getApps, getApp } from "firebase/app"
 import { getFirestore } from "firebase/firestore"
 import { getStorage } from "firebase/storage"
 import { getAuth } from "firebase/auth"
-import { firebaseConfig } from "./config"
+import { firebaseConfig } from "./lib/firebase/config"
 
 // Initialize Firebase (prevent multiple initializations)
 let app, db, storage, auth
