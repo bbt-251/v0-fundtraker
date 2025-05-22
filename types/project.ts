@@ -144,6 +144,7 @@ export interface TaskResourceAssignment {
     // Add new field for multiple date ranges
     dateRanges?: { startDate: string; endDate: string }[]
     multipleRanges?: boolean
+    remainingBudget?: number
 }
 
 export interface ProjectDeliverable {
