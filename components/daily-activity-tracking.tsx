@@ -160,7 +160,7 @@ export function DailyActivityTracking({ initialDate, onDateChange, projectId }: 
         }
 
         fetchTasks()
-    }, [date, toast, projectId])
+    }, [date, projectId])
 
     // Fetch team members for the current user (project owner)
     useEffect(() => {
@@ -515,8 +515,8 @@ export function DailyActivityTracking({ initialDate, onDateChange, projectId }: 
 
                 {/* Date Picker */}
                 <DatePicker
-                    date={date}
-                    onDateChange={handleDateChange}
+                    value={date}
+                    onChange={handleDateChange}
                     className="w-[240px]"
                     placeholder="Select date"
                     format="MMMM DD, YYYY"
