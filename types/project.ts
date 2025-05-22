@@ -127,8 +127,8 @@ export interface ProjectTask {
     priority: "Low" | "Medium" | "High"
     statusReason?: string
     // Add new field for assigned team member
-    assignedTo?: string
-    assignedToName?: string
+    assignedTo: string | null | undefined
+    assignedToName: string | null | undefined
 }
 
 export interface TaskResourceAssignment {

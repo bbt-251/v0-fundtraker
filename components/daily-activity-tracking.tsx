@@ -273,12 +273,12 @@ export function DailyActivityTracking({ initialDate, onDateChange, projectId }: 
 
                     // Only update assignee if it's not empty
                     if (editAssignee && editAssignee !== "unassigned") {
-                        updatedTask.assignee = assigneeId
+                        updatedTask.assignedTo = assigneeId
                         updatedTask.assignedToName = assigneeName
                     } else {
                         // If "Unassigned" is selected, clear the assignee
-                        updatedTask.assignee = undefined
-                        updatedTask.assignedToName = undefined
+                        updatedTask.assignedTo = null
+                        updatedTask.assignedToName = null
                     }
 
                     return updatedTask
