@@ -182,6 +182,7 @@ export default function DocumentManagement() {
 
                 // Fetch documents
                 const fetchedDocuments = await getDocuments(filter)
+                console.log("fetchedDocuments: ", fetchedDocuments)
                 setDocuments(fetchedDocuments)
 
                 // Fetch statistics
@@ -200,7 +201,7 @@ export default function DocumentManagement() {
         }
 
         fetchDocuments()
-    }, [selectedProjectId, selectedTaskId, selectedDocType, searchQuery, toast])
+    }, [selectedProjectId, selectedDocType, selectedTaskId, searchQuery])
 
     // Reset upload form when dialog opens/closes
     useEffect(() => {
@@ -514,7 +515,7 @@ export default function DocumentManagement() {
                         <SelectContent>
                             {projects.map((project) => (
                                 <SelectItem key={project.id} value={project.id}>
-                                    {project.name || project.title}
+                                    {project.name}
                                 </SelectItem>
                             ))}
                         </SelectContent>
