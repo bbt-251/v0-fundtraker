@@ -116,10 +116,10 @@ export default function MyProjectsPage() {
                 <div className="text-center py-16 rounded-lg">
                     <h3 className="text-lg font-medium text-gray-500">No projects found</h3>
                     <p className="mt-2 text-sm text-gray-500">Get started by creating a new project.</p>
-                    <Button onClick={handleCreateProject} className="mt-4">
+                    {/* <Button onClick={handleCreateProject} className="mt-4">
                         <Plus className="h-4 w-4 mr-2" />
                         Create New Project
-                    </Button>
+                    </Button> */}
                 </div>
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
